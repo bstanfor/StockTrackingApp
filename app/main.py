@@ -47,7 +47,7 @@ def index():
     total_deposits = sum(safe_float(t['deposits']) for t in transactions if t['action'] in ['Deposit/Withdrawal', 'Dividend', 'Starting Cash'])
     total_profits = sum(safe_float(t['profit_loss']) for t in transactions)
     total_cash = total_deposits + total_profits
-
+ 
     # Supply display configuration expected by the template
     columns = [
         ('id', 'ID'), ('account', 'Account'), ('lot', 'Lot #'), ('date', 'Date'),
