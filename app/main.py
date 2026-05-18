@@ -10,7 +10,7 @@ ACCOUNTS = ["401K-B", "401K-R", "B-Vanguard-R", "K-Vanguard-R"]
 
 # Initialize database
 def init_db():
-    conn = sqlite3.connect(db_file)
+    conn = get_db_connection()
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS transactions
                  (id INTEGER PRIMARY KEY, account TEXT, lot INTEGER, date TEXT, settlement_date TEXT, stock TEXT,
@@ -47,7 +47,30 @@ def index():
     total_deposits = sum(safe_float(t['deposits']) for t in transactions if t['action'] in ['Deposit/Withdrawal', 'Dividend', 'Starting Cash'])
     total_profits = sum(safe_float(t['profit_loss']) for t in transactions)
     total_cash = total_deposits + total_profits
+
+    # Supply display configuration expected by the template
+    columns = [
+        ('id', 'ID'), ('account', 'Account'), ('lot', 'Lot #'), ('date', 'Date'),
+        ('settlement_date', 'Settlement Date'), ('stock', 'Stock'), ('action', 'Action'),
+        ('shares', 'Shares'), ('price_share', 'Price per Share'), ('fees', 'Fees'),
+        ('deposits', 'Deposits'), ('trade_amount', 'Trade Amount'), ('net_cash_flow', 'Net Cash Flow'),
+        ('profit_loss', 'Profit / Loss'), ('actions', 'Actions'), ('profit_percent', 'Profit %')
+    ]
+    visible_columns = [k for k, _ in columns]
+    sort_options = [('date', 'Date'), ('account', 'Account'), ('stock', 'Stock')]
+    sort_by = 'date'
+    sort_order = 'DESC'
+
+    # Simple performance metric placeholder (avoid division by zero)
+    try:
+        performance = (total_profits / abs(total_deposits)) * 100 if total_deposits != 0 else 0.0
+    except Exception:
+        performance = 0.0
+
     return render_template("index.html", transactions=transactions, total_cash=total_cash,
+                           total_profits=total_profits, performance=performance,
+                           columns=columns, visible_columns=visible_columns,
+                           sort_options=sort_options, sort_by=sort_by, sort_order=sort_order,
                            accounts=['All'] + ACCOUNTS, selected_account=selected_account)
 
 def get_buy_price(lot, stock):
@@ -123,7 +146,7 @@ def add_transaction():
         net_cash_flow = 0
         profit_loss = 0
 
-    conn = sqlite3.connect(db_file)
+    conn = get_db_connection()
     c = conn.cursor()
     c.execute("""INSERT INTO transactions (
         account, lot, date, settlement_date, stock, action, shares, price_share,
@@ -222,7 +245,7 @@ def update(transaction_id):
         net_cash_flow = 0
         profit_loss = 0
     
-    conn = sqlite3.connect(db_file)
+    conn = get_db_connection()
     c = conn.cursor()
     c.execute("""UPDATE transactions SET
         account = ?, lot = ?, date = ?, settlement_date = ?, stock = ?, action = ?,
@@ -237,7 +260,7 @@ def update(transaction_id):
 
 @app.route("/delete/<int:transaction_id>")
 def delete(transaction_id):
-    conn = sqlite3.connect(db_file)
+    conn = get_db_connection()
     c = conn.cursor()
     c.execute("DELETE FROM transactions WHERE id = ?", (transaction_id,))
     conn.commit()
