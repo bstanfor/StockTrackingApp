@@ -1,0 +1,15 @@
+venv/
+finance.db
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+*.sqlite3
+*.db
+*.sqlite
+.DS_Store
+.vscode/
+.idea/
+*.log
