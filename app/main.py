@@ -1,23 +1,19 @@
 # Python
-
 from flask import Flask, render_template, request, redirect
 import sqlite3
-
 
 app = Flask(__name__)
 db_file = "finance.db"
 
-
 ACCOUNTS = ["401K-B", "401K-R", "B-Vanguard-R", "K-Vanguard-R"]
-
 
 # ---------------------------
 # Database Connection
 # ---------------------------
 def get_db_connection():
-conn = sqlite3.connect(db_file)
-conn.row_factory = sqlite3.Row
-return conn
+    conn = sqlite3.connect(db_file)
+    conn.row_factory = sqlite3.Row
+    return conn
 
 
 # ---------------------------
