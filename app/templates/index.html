@@ -1,250 +1,77 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Stock Performance Tracker</title>
+    <title>Portfolio Dashboard</title>
 </head>
 <body>
 
-    <h1>Retirement Financial Accounts Tracker</h1>
+<h1>Portfolio Dashboard</h1>
 
-    <form method="GET" action="/" id="filterForm">
-        <label>View Account</label>
-        <select name="account" onchange="this.form.submit()">
-            {% for account in accounts %}
-            <option value="{{ account }}" {% if account == selected_account %}selected{% endif %}>{{ account }}</option>
-            {% endfor %}
-        </select>
-        
-        <button type="button" onclick="toggleFilters()">Transaction Filter</button>
-        
-        <div id="filterOptions" style="display:none;">
-            <h3>Display Options</h3>
-            
-            <label>Sort By:</label>
-            <select name="sort_by">
-                {% for k, d in sort_options %}
-                <option value="{{ k }}" {% if k == sort_by %}selected{% endif %}>{{ d }}</option>
-                {% endfor %}
-            </select>
-        
-        <label>Sort Order:</label>
-        <input type="radio" name="sort_order" value="ASC" {% if sort_order == 'ASC' %}checked{% endif %}> Ascending
-        <input type="radio" name="sort_order" value="DESC" {% if sort_order == 'DESC' %}checked{% endif %}> Descending
-        
-        <br><br>
-        
-        <label>Visible Columns:</label><br>
-        {% for k, d in columns %}
-        <input type="checkbox" name="columns" value="{{ k }}" {% if k in visible_columns %}checked{% endif %}> {{ d }}<br>
-        {% endfor %}
-        
-        <br>
-        <button type="submit">Apply Filters</button>
-        </div>
-    </form>
+<h2>Summary</h2>
+<p>Total Cash: {{ total_cash }}</p>
+<p>Total Invested: {{ total_invested }}</p>
+<p>Portfolio Value: {{ portfolio_value }}</p>
+<p>Total P&L: {{ total_pnl }}</p>
 
-    <div>
-        <button type="button" onclick="showForm('stock')">Add Stock Buy/Sell</button>
-        <button type="button" onclick="showForm('cash')">Add Deposit/Withdrawal/Starting Cash</button>
-        <button type="button" onclick="toggleImport()">Add Stock Transactions</button>
-    </div>
+<hr>
 
-    <div id="importForm" style="display:none; margin-top: 1em;">
-        <form method="POST" action="/import" enctype="multipart/form-data">
-            <h3>Import Stock Transactions</h3>
-            <label>CSV File</label>
-            <input type="file" name="file" accept=".csv" required>
-            <p>Expected columns: account, lot, date, stock, action, shares, price_share, fees, deposits, withdrawal, starting_cash</p>
-            <button type="submit">Import Transactions</button>
-        </form>
-    </div>
+<h2>Transactions</h2>
 
-    <form method="POST" action="/add" id="stockForm" style="display:none; margin-top: 1em;">
-        <h3>Add Stock Transaction</h3>
+<table border="1">
+<tr>
+    <th>Date</th>
+    <th>Account</th>
+    <th>Symbol</th>
+    <th>Type</th>
+    <th>Shares</th>
+    <th>Price</th>
+    <th>Fees</th>
+    <th>Lot</th>
+</tr>
 
-        <label>Account</label>
-        <select name="account" required>
-            {% for account in accounts if account != 'All' %}
-            <option value="{{ account }}" {% if account == selected_account %}selected{% endif %}>{{ account }}</option>
-            {% endfor %}
-        </select>
+{% for t in transactions %}
+<tr>
+    <td>{{ t.date }}</td>
+    <td>{{ t.account }}</td>
+    <td>{{ t.symbol }}</td>
+    <td>{{ t.type }}</td>
+    <td>{{ t.shares }}</td>
+    <td>{{ t.price }}</td>
+    <td>{{ t.fees }}</td>
+    <td>{{ t.lot_id }}</td>
+</tr>
+{% endfor %}
+</table>
 
-        <label>Lot #</label>
-        <input type="number" name="lot" step="1" required>
+<hr>
 
-        <label>Date</label>
-        <input type="date" name="date" required>
+<h2>Cash Flows</h2>
 
-        <label>Stock</label>
-        <input type="text" name="stock" required>
+<table border="1">
+<tr>
+    <th>Date</th>
+    <th>Account</th>
+    <th>Amount</th>
+    <th>Description</th>
+</tr>
 
-        <label>Action</label>
-        <select name="action" id="stockActionSelect" required>
-            <option value="BUY">BUY</option>
-            <option value="SELL">SELL</option>
-        </select>
+{% for c in cash_flows %}
+<tr>
+    <td>{{ c.date }}</td>
+    <td>{{ c.account }}</td>
+    <td>{{ c.amount }}</td>
+    <td>{{ c.description }}</td>
+</tr>
+{% endfor %}
+</table>
 
-        <label>Shares</label>
-        <input type="number" name="shares" step="0.0001" required>
+<hr>
 
-        <label>Price per Share</label>
-        <input type="number" name="price_share" step="0.0001" required>
-
-        <label>Fees</label>
-        <input type="number" name="fees" step="0.01" value="0">
-
-        <input type="hidden" name="deposits" value="0">
-        <input type="hidden" name="withdrawal" value="0">
-        <input type="hidden" name="starting_cash" value="0">
-
-        <button type="submit">Add Stock Transaction</button>
-    </form>
-
-    <form method="POST" action="/add" id="cashForm" style="display:none; margin-top: 1em;">
-        <h3>Add Cash Transaction</h3>
-
-        <label>Account</label>
-        <select name="account" required>
-            {% for account in accounts if account != 'All' %}
-            <option value="{{ account }}" {% if account == selected_account %}selected{% endif %}>{{ account }}</option>
-            {% endfor %}
-        </select>
-
-        <label>Date</label>
-        <input type="date" name="date" required>
-
-        <label>Action</label>
-        <select name="action" id="cashActionSelect" required onchange="updateCashFieldVisibility()">
-            <option value="Deposit/Withdrawal">Deposit/Withdrawal</option>
-            <option value="Dividend">Dividend</option>
-            <option value="Starting Cash">Starting Cash</option>
-        </select>
-
-        <div id="cashDepositField" style="display:block; margin-top: 0.5em;">
-            <label>Deposit Amount</label>
-            <input type="number" name="deposits" step="0.01" value="0">
-        </div>
-
-        <div id="cashWithdrawalField" style="display:block; margin-top: 0.5em;">
-            <label>Withdrawal Amount</label>
-            <input type="number" name="withdrawal" step="0.01" value="0">
-        </div>
-
-        <div id="cashStartingCashField" style="display:none; margin-top: 0.5em;">
-            <label>Starting Cash</label>
-            <input type="number" name="starting_cash" step="0.01" value="0">
-        </div>
-
-        <input type="hidden" name="lot" value="0">
-        <input type="hidden" name="stock" value="">
-        <input type="hidden" name="shares" value="0">
-        <input type="hidden" name="price_share" value="0">
-        <input type="hidden" name="fees" value="0">
-
-        <button type="submit">Add Cash Transaction</button>
-    </form>
-
-    <h2>Transactions</h2>
-
-    <!-- Full XLS-based table -->
-    <table border="1">
-        <thead>
-            <tr>
-                {% for k, d in columns %}
-                {% if k in visible_columns %}
-                <th>{{ d }}</th>
-                {% endif %}
-                {% endfor %}
-            </tr>
-        </thead>
-
-        <tbody>
-            {% for t in transactions %}
-            <tr>
-                {% for k, d in columns %}
-                {% if k in visible_columns %}
-                <td>
-                    {% if k == 'actions' %}
-                    <a href="/edit/{{ t.id }}"><button type="button">Edit</button></a>
-                    <a href="/delete/{{ t.id }}" onclick="return confirm('Delete this transaction?');"><button type="button" style="color: red;">Delete</button></a>
-                    {% elif k == 'profit_percent' %}
-                    {% if t.trade_amount != 0 %}{{ "%.2f"|format((t.profit_loss / t.trade_amount) * 100) }}%{% else %}0.00%{% endif %}
-                    {% else %}
-                    {{ t[k] }}
-                    {% endif %}
-                </td>
-                {% endif %}
-                {% endfor %}
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-
-    <h3>Total Cash: {{ "%.2f"|format(total_cash) }}</h3>
-    <h3>Total Profits: {{ "%.2f"|format(total_profits) }}</h3>
-    <h3>Performance: {{ "%.2f"|format(performance) }}%</h3>
-
-    <script>
-        function toggleFilters() {
-            const options = document.getElementById('filterOptions');
-            if (options.style.display === 'none') {
-                options.style.display = 'block';
-            } else {
-                options.style.display = 'none';
-            }
-        }
-
-        function toggleImport() {
-            const importForm = document.getElementById('importForm');
-            if (importForm.style.display === 'none') {
-                importForm.style.display = 'block';
-            } else {
-                importForm.style.display = 'none';
-            }
-        }
-
-        function showForm(formType) {
-            const stockForm = document.getElementById('stockForm');
-            const cashForm = document.getElementById('cashForm');
-            if (formType === 'stock') {
-                stockForm.style.display = 'block';
-                cashForm.style.display = 'none';
-            } else {
-                stockForm.style.display = 'none';
-                cashForm.style.display = 'block';
-            }
-        }
-
-        function updateCashFieldVisibility() {
-            const action = document.getElementById('cashActionSelect').value;
-            const depositField = document.getElementById('cashDepositField');
-            const withdrawalField = document.getElementById('cashWithdrawalField');
-            const startingCashField = document.getElementById('cashStartingCashField');
-
-            if (action === 'Deposit/Withdrawal') {
-                depositField.style.display = 'block';
-                withdrawalField.style.display = 'block';
-                startingCashField.style.display = 'none';
-                document.querySelector('input[name="starting_cash"]').value = 0;
-            } else if (action === 'Dividend') {
-                depositField.style.display = 'block';
-                withdrawalField.style.display = 'none';
-                startingCashField.style.display = 'none';
-                document.querySelector('input[name="withdrawal"]').value = 0;
-                document.querySelector('input[name="starting_cash"]').value = 0;
-            } else if (action === 'Starting Cash') {
-                depositField.style.display = 'none';
-                withdrawalField.style.display = 'none';
-                startingCashField.style.display = 'block';
-                document.querySelector('input[name="deposits"]').value = 0;
-                document.querySelector('input[name="withdrawal"]').value = 0;
-            }
-        }
-
-        document.addEventListener('DOMContentLoaded', function() {
-            updateCashFieldVisibility();
-        });
-    </script>
+<h2>Equity Curve</h2>
+<div>
+    {{ equity_chart|safe }}
+</div>
 
 </body>
 </html>
+``
