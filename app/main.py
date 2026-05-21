@@ -86,34 +86,34 @@ def index():
             ORDER BY date DESC
         """, (selected_account,))
 
-transactions = c.fetchall()
+    transactions = c.fetchall()
 
-#✅ Fetch cash flows
-if selected_account == "All":
-    c.execute("""
-        SELECT id, account, date, amount, description
-        FROM cash_flows
-        ORDER BY date DESC
-    """)
-else:
-    c.execute("""
-        SELECT id, account, date, amount, description
-        FROM cash_flows
-        WHERE account = ?
-        ORDER BY date DESC
-    """, (selected_account,))
+    #✅ Fetch cash flows
+    if selected_account == "All":
+        c.execute("""
+            SELECT id, account, date, amount, description
+            FROM cash_flows
+            ORDER BY date DESC
+        """)
+    else:
+        c.execute("""
+            SELECT id, account, date, amount, description
+            FROM cash_flows
+            WHERE account = ?
+            ORDER BY date DESC
+        """, (selected_account,))
 
-cash_flows = c.fetchall()
+    cash_flows = c.fetchall()
 
-conn.close()
+    conn.close()
 
-return render_template(
-    "index.html",
-    transactions=transactions,
-    cash_flows=cash_flows,
-    accounts=["All"] + ACCOUNTS,
-    selected_account=selected_account
-)
+    return render_template(
+        "index.html",
+        transactions=transactions,
+        cash_flows=cash_flows,
+        accounts=["All"] + ACCOUNTS,
+        selected_account=selected_account
+    )
 # ---------------------------
 # Add Trade
 # ---------------------------
