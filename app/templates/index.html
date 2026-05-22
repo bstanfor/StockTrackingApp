@@ -2,22 +2,171 @@
 <html>
 <head>
     <title>Portfolio Dashboard</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+
+        h1, h2 {
+            margin-top: 25px;
+        }
+
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-top: 10px;
+        }
+
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: center;
+        }
+
+        th {
+            background-color: #f2f2f2;
+        }
+
+        .positive {
+            color: green;
+            font-weight: bold;
+        }
+
+        .negative {
+            color: red;
+            font-weight: bold;
+        }
+
+        .form-section {
+            padding: 10px;
+            border: 1px solid #ccc;
+            margin-bottom: 20px;
+        }
+
+        button {
+            padding: 5px 10px;
+            cursor: pointer;
+        }
+
+        .delete {
+            color: red;
+        }
+
+        .edit {
+            color: blue;
+        }
+    </style>
 </head>
+
 <body>
 
-<h1>Portfolio Dashboard</h1>
+<h1>📊 Portfolio Dashboard</h1>
 
-<h2>Summary</h2>
-<p>Total Cash: {{ total_cash }}</p>
-<p>Total Invested: {{ total_invested }}</p>
-<p>Portfolio Value: {{ portfolio_value }}</p>
-<p>Total P&L: {{ total_pnl }}</p>
+<!-- ========================= -->
+<!-- ✅ ACCOUNT FILTER -->
+<!-- ========================= -->
+<form method="GET" action="/">
+    <label><b>Select Account:</b></label>
+
+    <select name="account" onchange="this.form.submit()">
+        {% for acc in accounts %}
+        <option value="{{ acc }}" {% if acc == selected_account %}selected{% endif %}>
+            {{ acc }}
+        </option>
+        {% endfor %}
+    </select>
+</form>
 
 <hr>
 
+<!-- ========================= -->
+<!-- ✅ SUMMARY -->
+<!-- ========================= -->
+<h2>Summary</h2>
+
+<p><b>Total Cash:</b> ${{ "%.2f"|format(total_cash) }}</p>
+<p><b>Total Invested:</b> ${{ "%.2f"|format(total_invested) }}</p>
+<p><b>Portfolio Value:</b> ${{ "%.2f"|format(portfolio_value) }}</p>
+
+<p>
+<b>Total P&L:</b>
+<span class="{% if total_pnl >= 0 %}positive{% else %}negative{% endif %}">
+    ${{ "%.2f"|format(total_pnl) }}
+</span>
+</p>
+
+<hr>
+
+<!-- ========================= -->
+<!-- ✅ ADD TRADE -->
+<!-- ========================= -->
+<div class="form-section">
+<h2>Add Trade</h2>
+
+<form method="post" action="/add_trade">
+    Account:
+    <select name="account">
+        {% for acc in accounts %}
+        <option value="{{ acc }}">{{ acc }}</option>
+        {% endfor %}
+    </select>
+
+    Date: <input type="date" name="date" required>
+
+    Symbol: <input type="text" name="stock" required>
+
+    Type:
+    <select name="action">
+        <option value="BUY">BUY</option>
+        <option value="SELL">SELL</option>
+    </select>
+
+    Shares: <input type="number" step="any" name="shares">
+
+    Price: <input type="number" step="any" name="price">
+
+    Fees: <input type="number" step="any" name="fees">
+
+    Lot: <input type="number" name="lot">
+
+    <button type="submit">Add Trade</button>
+</form>
+</div>
+
+<!-- ========================= -->
+<!-- ✅ ADD CASH -->
+<!-- ========================= -->
+<div class="form-section">
+<h2>Add Cash (Deposit / Withdrawal)</h2>
+
+<form method="post" action="/add_cash">
+    Account:
+    <select name="account">
+        {% for acc in accounts %}
+        <option value="{{ acc }}">{{ acc }}</option>
+        {% endfor %}
+    </select>
+
+    Date: <input type="date" name="date" required>
+
+    Amount: <input type="number" step="any" name="amount" required>
+
+    Description: <input type="text" name="description">
+
+    <button type="submit">Add Cash</button>
+</form>
+</div>
+
+<hr>
+
+<!-- ========================= -->
+<!-- ✅ TRANSACTIONS -->
+<!-- ========================= -->
 <h2>Transactions</h2>
 
-<table border="1">
+<table>
 <tr>
     <th>Date</th>
     <th>Account</th>
@@ -27,6 +176,7 @@
     <th>Price</th>
     <th>Fees</th>
     <th>Lot</th>
+    <th>Actions</th>
 </tr>
 
 {% for t in transactions %}
@@ -35,43 +185,69 @@
     <td>{{ t.account }}</td>
     <td>{{ t.symbol }}</td>
     <td>{{ t.type }}</td>
-    <td>{{ t.shares }}</td>
-    <td>{{ t.price }}</td>
-    <td>{{ t.fees }}</td>
+    <td>{{ "%.2f"|format(t.shares) }}</td>
+    <td>${{ "%.2f"|format(t.price) }}</td>
+    <td>${{ "%.2f"|format(t.fees) }}</td>
     <td>{{ t.lot_id }}</td>
+
+    <td>
+        <a class="edit" href="/edit/{{ t.id }}">Edit</a> |
+        <a class="delete" href="/delete/{{ t.id }}" onclick="return confirm('Delete this trade?')">
+            Delete
+        </a>
+    </td>
 </tr>
 {% endfor %}
+
 </table>
 
 <hr>
 
+<!-- ========================= -->
+<!-- ✅ CASH FLOWS -->
+<!-- ========================= -->
 <h2>Cash Flows</h2>
 
-<table border="1">
+<table>
 <tr>
     <th>Date</th>
     <th>Account</th>
     <th>Amount</th>
     <th>Description</th>
+    <th>Actions</th>
 </tr>
 
 {% for c in cash_flows %}
 <tr>
     <td>{{ c.date }}</td>
     <td>{{ c.account }}</td>
-    <td>{{ c.amount }}</td>
+
+    <td class="{% if c.amount >= 0 %}positive{% else %}negative{% endif %}">
+        ${{ "%.2f"|format(c.amount) }}
+    </td>
+
     <td>{{ c.description }}</td>
+
+    <td>
+        <a class="delete" href="/delete_cash/{{ c.id }}" onclick="return confirm('Delete this entry?')">
+            Delete
+        </a>
+    </td>
 </tr>
 {% endfor %}
+
 </table>
 
 <hr>
 
+<!-- ========================= -->
+<!-- ✅ EQUITY CURVE -->
+<!-- ========================= -->
 <h2>Equity Curve</h2>
+
 <div>
     {{ equity_chart|safe }}
 </div>
 
 </body>
 </html>
-``
