@@ -212,6 +212,9 @@
     <th>Avg Cost</th>
     <th>Value</th>
     <th>Unrealized P&L</th>
+    <th>Unrealized %</th>
+    <th>Allocation %</th>
+
 </tr>
 
 {% for p in positions %}
@@ -221,12 +224,16 @@
     <td>${{ "%.2f"|format(p.price) }}</td>
     <td>${{ "%.2f"|format(p.cost_basis) }}</td>
     <td>${{ "%.2f"|format(p.value) }}</td>
-
     
     <td class="{% if p.unrealized_pnl >= 0 %}positive{% else %}negative{% endif %}">
         ${{ "%.2f"|format(p.unrealized_pnl) }}
 
     </td>
+    
+    <td class="{% if p.unrealized_pct >= 0 %}positive{% else %}negative{% endif %}">
+        {{ "%.2f"|format(p.unrealized_pct) }}%
+    </td>
+
 </tr>
 {% endfor %}
 
@@ -236,6 +243,11 @@
 {% endif %}
 
 <hr>
+
+<h2>Portfolio Allocation</h2>
+<div>
+    {{ allocation_chart|safe }}
+</div>
 
 <!-- ✅ TRANSACTIONS -->
 <h2>Transactions</h2>
@@ -251,6 +263,7 @@
     <th>Price</th>
     <th>Amount</th>
     <th>Realized P&L</th>
+    <th>Realized %</th>
     <th>Actions</th>
 </tr>
 
@@ -269,6 +282,10 @@
         ${{ "%.2f"|format(t.realized_pnl) }}
     </td>
     
+    <td class="{% if t.realized_pct >= 0 %}positive{% else %}negative{% endif %}">
+        {{ "%.2f"|format(t.realized_pct) }}%
+    </td>
+
     </td>
 
     <td>

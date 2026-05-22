@@ -85,6 +85,7 @@ def enrich_trades(trades):
     trades = trades.sort_values("date").copy()
     trades["trade_amount"] = trades["shares"] * trades["price"]
     trades["realized_pnl"] = 0.0
+    trades["realized_pct"] = 0.0
 
     inventory = {}
 
@@ -103,12 +104,15 @@ def enrich_trades(trades):
         elif row["type"] == "SELL":
             remaining = row["shares"]
             pnl = 0
+            total_cost = 0
 
             while remaining > 0 and len(inventory[sym]) > 0:
                 lot = inventory[sym][0]
 
                 matched = min(remaining, lot["shares"])
+
                 pnl += matched * (row["price"] - lot["price"])
+                total_cost += matched * lot["price"]  
 
                 lot["shares"] -= matched
                 remaining -= matched
@@ -116,7 +120,18 @@ def enrich_trades(trades):
                 if lot["shares"] == 0:
                     inventory[sym].pop(0)
 
+            pnl = pnl - row["fees"]
+
             trades.at[i, "realized_pnl"] = pnl - row["fees"]
+        
+            if total_cost != 0:
+                trades.at[i, "realized_pct"] = (pnl / total_cost) * 100
+            else:
+                trades.at[i, "realized_pct"] = 0
+
+        else:
+            trades.at[i, "realized_pnl"] = 0
+            trades.at[i, "realized_pct"] = 0
 
     return trades
 
@@ -127,7 +142,7 @@ def compute_positions(trades):
     inventory = {}
     positions = {}
 
-    # ✅ Build FIFO inventory (same logic as compute_metrics)
+    # Build FIFO inventory
     for _, row in trades.iterrows():
         sym = row["symbol"]
 
@@ -157,34 +172,74 @@ def compute_positions(trades):
 
     result = []
 
+    total_value = 0
+
+    # First pass: compute value
+    temp = []
     for sym, shares in positions.items():
         if shares <= 0:
             continue
 
-        # ✅ get market price
         try:
             data = yf.Ticker(sym).history(period="1d")
             price = data["Close"].iloc[-1] if not data.empty else 0
         except:
             price = 0
 
-        # ✅ TRUE cost basis from remaining lots
         remaining_cost = sum(l["shares"] * l["price"] for l in inventory[sym])
-
-        avg_cost = remaining_cost / shares if shares > 0 else 0
         value = shares * price
         unrealized_pnl = value - remaining_cost
 
-        result.append({
+        temp.append({
             "symbol": sym,
             "shares": shares,
-            "price": round(price, 2),
+            "price": price,
+            "value": value,
+            "cost_basis_total": remaining_cost,
+            "unrealized_pnl": unrealized_pnl
+        })
+
+        total_value += value
+
+    # Second pass: add %
+    for p in temp:
+        shares = p["shares"]
+        value = p["value"]
+        cost = p["cost_basis_total"]
+        unrealized_pnl = p["unrealized_pnl"]
+
+        avg_cost = cost / shares if shares > 0 else 0
+
+        unrealized_pct = (unrealized_pnl / cost * 100) if cost != 0 else 0
+        allocation_pct = (value / total_value * 100) if total_value != 0 else 0
+
+        result.append({
+            "symbol": p["symbol"],
+            "shares": shares,
+            "price": round(p["price"], 2),
             "value": round(value, 2),
             "cost_basis": round(avg_cost, 2),
-            "unrealized_pnl": round(unrealized_pnl, 2)
+            "unrealized_pnl": round(unrealized_pnl, 2),
+            "unrealized_pct": round(unrealized_pct, 2),
+            "allocation_pct": round(allocation_pct, 2)
         })
 
     return result
+
+def allocation_chart(positions):
+    if not positions:
+        return ""
+
+    df = pd.DataFrame(positions)
+
+    fig = px.pie(
+        df,
+        names="symbol",
+        values="value",
+        title="Portfolio Allocation"
+    )
+
+    return fig.to_html(full_html=False)
 
 def compute_metrics(trades, cash):
     if trades.empty:
@@ -305,12 +360,14 @@ def index():
     metrics = compute_metrics(trades, cash)
     chart = equity_chart(trades, cash)
     positions = compute_positions(trades)
+    alloc_chart = allocation_chart(positions)
 
     return render_template(
         "index.html",
         transactions=trades.to_dict("records"),
         cash_flows=cash.to_dict("records"),
         positions=positions,
+        allocation_chart=alloc_chart,
         accounts=["All"] + ACCOUNTS,
         selected_account=acc,
         equity_chart=chart,
