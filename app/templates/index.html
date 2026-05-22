@@ -109,6 +109,9 @@
 
 <hr>
 
+<button onclick="toggleForms()">➕ Add Transaction</button>
+
+<div id="transactionForms" style="display:none; margin-top:20px;">
 <!-- ✅ ADD TRADE -->
 <h2>Add Trade</h2>
 
@@ -162,6 +165,11 @@
     </div>
 
     <button type="submit">➕ Add Trade</button>
+    
+    <button style="padding:10px 16px; font-size:16px; margin-top:10px;">
+        ➕ Add Transaction
+    </button>
+
 </form>
 
 <hr>
@@ -199,6 +207,8 @@
 </form>
 
 <hr>
+
+</div>
 
 <!-- ✅ POSITIONS -->
 <h2>Positions</h2>
@@ -338,6 +348,18 @@
 <div>
     {{ equity_chart|safe }}
 </div>
+
+<script>
+function toggleForms() {
+    var x = document.getElementById("transactionForms");
+
+    if (x.style.display === "none") {
+        x.style.display = "block";
+    } else {
+        x.style.display = "none";
+    }
+}
+</script>
 
 </body>
 </html>

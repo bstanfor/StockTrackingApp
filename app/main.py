@@ -226,11 +226,24 @@ def compute_positions(trades):
 
     return result
 
-def allocation_chart(positions):
-    if not positions:
+def allocation_chart(positions, total_cash):
+    data = []
+    
+    for p in positions:
+        data.append({
+           "symbol": p["symbol"],
+            "value": p["value"]
+        })
+    
+    if total_cash > 0:
+        data.append({
+            "symbol": "Cash",
+            "value": total_cash
+        })
+    if not data:
         return ""
 
-    df = pd.DataFrame(positions)
+    df = pd.DataFrame(data)
 
     fig = px.pie(
         df,
@@ -360,8 +373,7 @@ def index():
     metrics = compute_metrics(trades, cash)
     chart = equity_chart(trades, cash)
     positions = compute_positions(trades)
-    alloc_chart = allocation_chart(positions)
-
+    alloc_chart = allocation_chart(positions, metrics["total_cash"])
     return render_template(
         "index.html",
         transactions=trades.to_dict("records"),
