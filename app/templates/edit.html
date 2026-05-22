@@ -1,102 +1,20 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Edit Transaction</title>
-</head>
-<body>
+<h2>Edit</h2>
+<form method="POST" action="/update/{{ transaction.id }}">
 
-    <h1>Edit Transaction</h1>
+<input name="account" value="{{ transaction.account }}">
+<input type="date" name="date" value="{{ transaction.date }}">
+<input name="stock" value="{{ transaction.symbol }}">
 
-    <!-- Edit form -->
-    <form method="POST" action="/update/{{ transaction.id }}">
+<select name="action">
+<option value="BUY" {% if transaction.type=="BUY" %}selected{% endif %}>BUY</option>
+<option value="SELL" {% if transaction.type=="SELL" %}selected{% endif %}>SELL</option>
+</select>
 
-            <label>Account</label>
-        <select name="account" required>
-            {% for account in accounts %}
-            <option value="{{ account }}" {% if transaction.account == account %}selected{% endif %}>{{ account }}</option>
-            {% endfor %}
-        </select>
+<input name="shares" value="{{ transaction.shares }}">
+<input name="price" value="{{ transaction.price }}">
+<input name="fees" value="{{ transaction.fees }}">
+<input name="lot" value="{{ transaction.lot_id }}">
 
-        <label>Lot #</label>
-        <input type="number" name="lot" step="1" value="{{ transaction.lot }}" required>
-
-        <label>Date</label>
-        <input type="date" name="date" value="{{ transaction.date }}" required>
-
-        <label>Stock</label>
-        <input type="text" name="stock" value="{{ transaction.stock }}" required>
-
-        <label>Action</label>
-        <select name="action" id="actionSelectEdit" required onchange="updateFieldVisibilityEdit()">
-            <option value="">--Select Action--</option>
-            <option value="BUY" {% if transaction.action == 'BUY' %}selected{% endif %}>BUY</option>
-            <option value="SELL" {% if transaction.action == 'SELL' %}selected{% endif %}>SELL</option>
-            <option value="Deposit/Withdrawal" {% if transaction.action == 'Deposit/Withdrawal' or transaction.action == 'Deposit' %}selected{% endif %}>Deposit/Withdrawal</option>
-            <option value="Dividend" {% if transaction.action == 'Dividend' %}selected{% endif %}>Dividend</option>
-            <option value="Starting Cash" {% if transaction.action == 'Starting Cash' %}selected{% endif %}>Starting Cash</option>
-        </select>
-
-        <label>Shares</label>
-        <input type="number" name="shares" step="0.0001" value="{{ transaction.shares }}">
-
-        <label>Price per Share</label>
-        <input type="number" name="price_share" step="0.0001" value="{{ transaction.price_share }}">
-
-        <label>Fees</label>
-        <input type="number" name="fees" step="0.01" value="{{ transaction.fees }}">
-
-        <div id="depositWithdrawalFieldsEdit" style="display:none;">
-            <label>Deposit Amount</label>
-            <input type="number" name="deposits" step="0.01" value="{{ transaction.deposits if transaction.action in ['Deposit/Withdrawal', 'Deposit', 'Dividend'] else 0 }}">
-
-            <label>Withdrawal Amount</label>
-            <input type="number" name="withdrawal" step="0.01" value="{{ transaction.deposits if transaction.action == 'Withdrawal' else 0 }}">
-        </div>
-
-        <div id="startingCashFieldEdit" style="display:none;">
-            <label>Starting Cash</label>
-            <input type="number" name="starting_cash" step="0.01" value="{{ transaction.deposits if transaction.action == 'Starting Cash' else 0 }}">
-        </div>
-
-        <div id="dividendFieldEdit" style="display:none;">
-            <label>Dividend Amount</label>
-            <input type="number" name="deposits" step="0.01" value="{{ transaction.deposits }}">
-        </div>
-
-        <button type="submit">Update Transaction</button>
-        <a href="/"><button type="button">Cancel</button></a>
-    </form>
-
-    <script>
-        function updateFieldVisibilityEdit() {
-            const action = document.getElementById('actionSelectEdit').value;
-            const depositWithdrawalFields = document.getElementById('depositWithdrawalFieldsEdit');
-            const dividendField = document.getElementById('dividendFieldEdit');
-            
-            const startingCashField = document.getElementById('startingCashFieldEdit');
-            if (action === 'Deposit/Withdrawal') {
-                depositWithdrawalFields.style.display = 'block';
-                dividendField.style.display = 'none';
-                startingCashField.style.display = 'none';
-            } else if (action === 'Dividend') {
-                depositWithdrawalFields.style.display = 'none';
-                dividendField.style.display = 'block';
-                startingCashField.style.display = 'none';
-            } else if (action === 'Starting Cash') {
-                depositWithdrawalFields.style.display = 'none';
-                dividendField.style.display = 'none';
-                startingCashField.style.display = 'block';
-            } else {
-                depositWithdrawalFields.style.display = 'none';
-                dividendField.style.display = 'none';
-                startingCashField.style.display = 'none';
-            }
-        }
-
-        document.addEventListener('DOMContentLoaded', function() {
-            updateFieldVisibilityEdit();
-        });
-    </script>
-
-</body>
-</html>
+<button>Update</button>
+</form>
+``

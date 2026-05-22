@@ -1,8 +1,9 @@
-# Python
+#Python
 from flask import Flask, render_template, request, redirect
 import sqlite3
 import pandas as pd
 import plotly.express as px
+import yfinance as yf
 
 app = Flask(__name__)
 db_file = "finance.db"
@@ -10,42 +11,37 @@ db_file = "finance.db"
 ACCOUNTS = ["401K-B", "401K-R", "B-Vanguard-R", "K-Vanguard-R"]
 
 # ---------------------------
-# Database Connection
+# DB
 # ---------------------------
 def get_db_connection():
     conn = sqlite3.connect(db_file)
     conn.row_factory = sqlite3.Row
     return conn
 
-# ---------------------------
-# Initialize Database
-# ---------------------------
 def init_db():
     conn = get_db_connection()
     c = conn.cursor()
 
-    # ✅ Transactions table (trades only)
     c.execute("""
     CREATE TABLE IF NOT EXISTS transactions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        account TEXT NOT NULL,
-        date TEXT NOT NULL,
+        account TEXT,
+        date TEXT,
         symbol TEXT,
-        type TEXT NOT NULL,
-        shares REAL DEFAULT 0,
-        price REAL DEFAULT 0,
-        fees REAL DEFAULT 0,
+        type TEXT,
+        shares REAL,
+        price REAL,
+        fees REAL,
         lot_id INTEGER
     )
     """)
 
-    # ✅ Cash flows (deposits / withdrawals)
     c.execute("""
     CREATE TABLE IF NOT EXISTS cash_flows (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        account TEXT NOT NULL,
-        date TEXT NOT NULL,
-        amount REAL NOT NULL,
+        account TEXT,
+        date TEXT,
+        amount REAL,
         description TEXT
     )
     """)
@@ -54,25 +50,21 @@ def init_db():
     conn.close()
 
 # ---------------------------
-# Utility
+# UTIL
 # ---------------------------
-def safe_float(value, default=0.0):
-    if value in ("", None):
-        return default
+def safe_float(v):
     try:
-        return float(value)
+        return float(v)
     except:
-        return default
+        return 0.0
 
 # ---------------------------
-# LOAD DATA (PANDAS)
+# LOAD
 # ---------------------------
 def load_data():
     conn = get_db_connection()
-
     trades = pd.read_sql("SELECT * FROM transactions", conn)
     cash = pd.read_sql("SELECT * FROM cash_flows", conn)
-
     conn.close()
 
     if not trades.empty:
@@ -86,175 +78,318 @@ def load_data():
 # ---------------------------
 # ANALYTICS
 # ---------------------------
-def compute_metrics(trades, cash):
-    # total external cash
-    total_cash = cash["amount"].sum() if not cash.empty else 0
+def enrich_trades(trades):
+    if trades.empty:
+        return trades
 
+    trades = trades.sort_values("date").copy()
+    trades["trade_amount"] = trades["shares"] * trades["price"]
+    trades["realized_pnl"] = 0.0
+
+    inventory = {}
+
+    for i, row in trades.iterrows():
+        sym = row["symbol"]
+
+        if sym not in inventory:
+            inventory[sym] = []
+
+        if row["type"] == "BUY":
+            inventory[sym].append({
+                "shares": row["shares"],
+                "price": row["price"]
+            })
+
+        elif row["type"] == "SELL":
+            remaining = row["shares"]
+            pnl = 0
+
+            while remaining > 0 and len(inventory[sym]) > 0:
+                lot = inventory[sym][0]
+
+                matched = min(remaining, lot["shares"])
+                pnl += matched * (row["price"] - lot["price"])
+
+                lot["shares"] -= matched
+                remaining -= matched
+
+                if lot["shares"] == 0:
+                    inventory[sym].pop(0)
+
+            trades.at[i, "realized_pnl"] = pnl - row["fees"]
+
+    return trades
+
+def compute_positions(trades):
+    if trades.empty:
+        return []
+
+    inventory = {}
+    positions = {}
+
+    # ✅ Build FIFO inventory (same logic as compute_metrics)
+    for _, row in trades.iterrows():
+        sym = row["symbol"]
+
+        inventory.setdefault(sym, [])
+        positions.setdefault(sym, 0)
+
+        if row["type"] == "BUY":
+            inventory[sym].append({
+                "shares": row["shares"],
+                "price": row["price"]
+            })
+            positions[sym] += row["shares"]
+
+        elif row["type"] == "SELL":
+            remaining = row["shares"]
+            positions[sym] -= row["shares"]
+
+            while remaining > 0 and len(inventory[sym]) > 0:
+                lot = inventory[sym][0]
+
+                used = min(remaining, lot["shares"])
+                lot["shares"] -= used
+                remaining -= used
+
+                if lot["shares"] == 0:
+                    inventory[sym].pop(0)
+
+    result = []
+
+    for sym, shares in positions.items():
+        if shares <= 0:
+            continue
+
+        # ✅ get market price
+        try:
+            data = yf.Ticker(sym).history(period="1d")
+            price = data["Close"].iloc[-1] if not data.empty else 0
+        except:
+            price = 0
+
+        # ✅ TRUE cost basis from remaining lots
+        remaining_cost = sum(l["shares"] * l["price"] for l in inventory[sym])
+
+        avg_cost = remaining_cost / shares if shares > 0 else 0
+        value = shares * price
+        unrealized_pnl = value - remaining_cost
+
+        result.append({
+            "symbol": sym,
+            "shares": shares,
+            "price": round(price, 2),
+            "value": round(value, 2),
+            "cost_basis": round(avg_cost, 2),
+            "unrealized_pnl": round(unrealized_pnl, 2)
+        })
+
+    return result
+
+def compute_metrics(trades, cash):
     if trades.empty:
         return {
             "total_cash": 0,
-            "total_invested": 0,
             "portfolio_value": 0,
+            "realized_pnl": 0,
+            "unrealized_pnl": 0,
             "total_pnl": 0
         }
 
-    trades["cash_flow"] = trades.apply(
+    contributions = cash["amount"].sum() if not cash.empty else 0
+
+    trades["cf"] = trades.apply(
         lambda x: -x["shares"] * x["price"] - x["fees"]
         if x["type"] == "BUY"
-        else x["shares"] * x["price"] - x["fees"]
-        if x["type"] == "SELL"
-        else 0,
+        else x["shares"] * x["price"] - x["fees"],
         axis=1
     )
 
-    total_invested = -trades[trades["type"] == "BUY"]["cash_flow"].sum()
+    cash_balance = contributions + trades["cf"].sum()
+    realized_pnl = trades["realized_pnl"].sum()
 
-    # positions
-    positions = trades.groupby("symbol").apply(
-        lambda df: df[df["type"] == "BUY"]["shares"].sum()
-        - df[df["type"] == "SELL"]["shares"].sum()
-    )
+    # ✅ TRUE FIFO inventory for cost basis
+    inventory = {}
+    positions = {}
 
-    # dummy prices (replace later with yfinance)
-    prices = {symbol: 100 for symbol in positions.index}
+    for _, row in trades.iterrows():
+        sym = row["symbol"]
 
-    portfolio_value = sum(positions[s] * prices[s] for s in positions.index)
+        inventory.setdefault(sym, [])
+        positions.setdefault(sym, 0)
 
-    total_pnl = portfolio_value + trades["cash_flow"].sum() + total_cash
+        if row["type"] == "BUY":
+            inventory[sym].append({
+                "shares": row["shares"],
+                "price": row["price"]
+            })
+            positions[sym] += row["shares"]
+
+        elif row["type"] == "SELL":
+            remaining = row["shares"]
+            positions[sym] -= row["shares"]
+
+            while remaining > 0 and len(inventory[sym]) > 0:
+                lot = inventory[sym][0]
+
+                used = min(remaining, lot["shares"])
+                lot["shares"] -= used
+                remaining -= used
+
+                if lot["shares"] == 0:
+                    inventory[sym].pop(0)
+
+    portfolio_value = 0
+    unrealized_pnl = 0
+
+    for sym, shares in positions.items():
+        if shares <= 0:
+            continue
+
+        try:
+            price = yf.Ticker(sym).history(period="1d")["Close"].iloc[-1]
+        except:
+            price = 0
+
+        remaining_cost = sum(l["shares"] * l["price"] for l in inventory[sym])
+        avg_cost = remaining_cost / shares if shares > 0 else 0
+
+        portfolio_value += shares * price
+        unrealized_pnl += shares * (price - avg_cost)
+
+    total_pnl = realized_pnl + unrealized_pnl
 
     return {
-        "total_cash": round(total_cash, 2),
-        "total_invested": round(total_invested, 2),
+        "total_cash": round(cash_balance, 2),
         "portfolio_value": round(portfolio_value, 2),
+        "realized_pnl": round(realized_pnl, 2),
+        "unrealized_pnl": round(unrealized_pnl, 2),
         "total_pnl": round(total_pnl, 2)
     }
 
-# ---------------------------
-# EQUITY CURVE
-# ---------------------------
-def create_equity_curve(trades, cash):
+def equity_chart(trades, cash):
     if trades.empty and cash.empty:
-        return "<p>No data</p>"
+        return ""
 
-    trades["cash_flow"] = trades.apply(
+    trades["cf"] = trades.apply(
         lambda x: -x["shares"] * x["price"] - x["fees"]
         if x["type"] == "BUY"
-        else x["shares"] * x["price"] - x["fees"]
-        if x["type"] == "SELL"
-        else 0,
+        else x["shares"] * x["price"] - x["fees"],
         axis=1
     )
 
-    t = trades[["date", "cash_flow"]] if not trades.empty else pd.DataFrame()
-    c = cash.rename(columns={"amount": "cash_flow"})[["date", "cash_flow"]] if not cash.empty else pd.DataFrame()
+    t = trades[["date", "cf"]]
+    c = cash.rename(columns={"amount": "cf"})[["date", "cf"]]
 
-    combined = pd.concat([t, c])
-    combined = combined.sort_values("date")
+    df = pd.concat([t, c]).sort_values("date")
+    df["equity"] = df["cf"].cumsum()
 
-    combined["equity"] = combined["cash_flow"].cumsum()
-
-    fig = px.line(combined, x="date", y="equity", title="Equity Curve")
-
+    fig = px.line(df, x="date", y="equity", title="Equity Curve")
     return fig.to_html(full_html=False)
+
 # ---------------------------
-# Home Page
+# ROUTES
 # ---------------------------
 @app.route("/")
 def index():
-    selected_account = request.args.get("account", "All")
+    acc = request.args.get("account", "All")
 
     trades, cash = load_data()
 
-    # ✅ Fetch trades
-    if selected_account != "All":
+    if acc != "All":
+        trades = trades[trades["account"] == acc]
+        cash = cash[cash["account"] == acc]
 
-        trades = trades[trades["account"] == selected_account]
-        cash = cash[cash["account"] == selected_account]
+    trades = enrich_trades(trades)
 
     metrics = compute_metrics(trades, cash)
-    equity_chart = create_equity_curve(trades, cash)
-
-    transactions = trades.to_dict("records") if not trades.empty else []
-    cash_flows = cash.to_dict("records") if not cash.empty else []
+    chart = equity_chart(trades, cash)
+    positions = compute_positions(trades)
 
     return render_template(
         "index.html",
-        transactions=transactions,
-        cash_flows=cash_flows,
+        transactions=trades.to_dict("records"),
+        cash_flows=cash.to_dict("records"),
+        positions=positions,
         accounts=["All"] + ACCOUNTS,
-        selected_account=selected_account,
-        equity_chart=equity_chart,
+        selected_account=acc,
+        equity_chart=chart,
         **metrics
     )
-# ---------------------------
-# Add Trade
-# ---------------------------
+
 @app.route("/add_trade", methods=["POST"])
 def add_trade():
     conn = get_db_connection()
-    c = conn.cursor()
-
-    c.execute("""
-        INSERT INTO transactions (account, date, symbol, type, shares, price, fees, lot_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    conn.execute("""
+    INSERT INTO transactions(account,date,symbol,type,shares,price,fees,lot_id)
+    VALUES(?,?,?,?,?,?,?,?)
     """, (
         request.form["account"],
         request.form["date"],
         request.form["stock"],
         request.form["action"],
-        safe_float(request.form.get("shares")),
-        safe_float(request.form.get("price")),
-        safe_float(request.form.get("fees")),
+        safe_float(request.form["shares"]),
+        safe_float(request.form["price"]),
+        safe_float(request.form["fees"]),
         int(request.form.get("lot", 0))
     ))
-
     conn.commit()
     conn.close()
-
     return redirect("/")
-# ---------------------------
-# Add Cash
-# ---------------------------
+
 @app.route("/add_cash", methods=["POST"])
 def add_cash():
     conn = get_db_connection()
-    c = conn.cursor()
-
-    c.execute("""
-        INSERT INTO cash_flows (account, date, amount, description)
-        VALUES (?, ?, ?, ?)
+    conn.execute("""
+    INSERT INTO cash_flows(account,date,amount,description)
+    VALUES(?,?,?,?)
     """, (
         request.form["account"],
         request.form["date"],
-        safe_float(request.form.get("amount")),
+        safe_float(request.form["amount"]),
         request.form.get("description", "")
     ))
-
     conn.commit()
     conn.close()
-
     return redirect("/")
-# ---------------------------
-# DELETE
-# ---------------------------
+
+@app.route("/edit/<int:id>")
+def edit(id):
+    conn = get_db_connection()
+    tx = conn.execute("SELECT * FROM transactions WHERE id=?", (id,)).fetchone()
+    conn.close()
+    return render_template("edit.html", transaction=tx, accounts=ACCOUNTS)
+
+@app.route("/update/<int:id>", methods=["POST"])
+def update(id):
+    conn = get_db_connection()
+    conn.execute("""
+    UPDATE transactions SET account=?,date=?,symbol=?,type=?,shares=?,price=?,fees=?,lot_id=?
+    WHERE id=?
+    """, (
+        request.form["account"],
+        request.form["date"],
+        request.form["stock"],
+        request.form["action"],
+        safe_float(request.form["shares"]),
+        safe_float(request.form["price"]),
+        safe_float(request.form["fees"]),
+        int(request.form["lot"]),
+        id
+    ))
+    conn.commit()
+    conn.close()
+    return redirect("/")
+
 @app.route("/delete/<int:id>")
 def delete(id):
     conn = get_db_connection()
-    conn.execute("DELETE FROM transactions WHERE id = ?", (id,))
+    conn.execute("DELETE FROM transactions WHERE id=?", (id,))
     conn.commit()
     conn.close()
     return redirect("/")
 
-@app.route("/delete_cash/<int:id>")
-def delete_cash(id):
-    conn = get_db_connection()
-    conn.execute("DELETE FROM cash_flows WHERE id = ?", (id,))
-    conn.commit()
-    conn.close()
-    return redirect("/")
-# ---------------------------
-# Run App
 # ---------------------------
 if __name__ == "__main__":
     init_db()
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(debug=True)

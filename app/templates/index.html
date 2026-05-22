@@ -4,14 +4,10 @@
     <title>Portfolio Dashboard</title>
 
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
-        }
+        body { font-family: Arial; margin: 20px; }
 
-        h1, h2 {
-            margin-top: 25px;
-        }
+        h1 { margin-bottom: 10px; }
+        h2 { margin-top: 30px; }
 
         table {
             border-collapse: collapse;
@@ -29,33 +25,30 @@
             background-color: #f2f2f2;
         }
 
-        .positive {
-            color: green;
-            font-weight: bold;
-        }
+        .positive { color: green; font-weight: bold; }
+        .negative { color: red; font-weight: bold; }
 
-        .negative {
-            color: red;
-            font-weight: bold;
-        }
-
-        .form-section {
-            padding: 10px;
-            border: 1px solid #ccc;
+        .cards {
+            display: flex;
+            gap: 20px;
             margin-bottom: 20px;
         }
 
+        .card {
+            border: 1px solid #ccc;
+            padding: 12px;
+            width: 180px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        form div {
+            margin-bottom: 8px;
+        }
+
         button {
-            padding: 5px 10px;
+            padding: 6px 12px;
             cursor: pointer;
-        }
-
-        .delete {
-            color: red;
-        }
-
-        .edit {
-            color: blue;
         }
     </style>
 </head>
@@ -64,12 +57,9 @@
 
 <h1>📊 Portfolio Dashboard</h1>
 
-<!-- ========================= -->
 <!-- ✅ ACCOUNT FILTER -->
-<!-- ========================= -->
-<form method="GET" action="/">
-    <label><b>Select Account:</b></label>
-
+<form method="get">
+    <label><b>Account:</b></label>
     <select name="account" onchange="this.form.submit()">
         {% for acc in accounts %}
         <option value="{{ acc }}" {% if acc == selected_account %}selected{% endif %}>
@@ -81,91 +71,176 @@
 
 <hr>
 
-<!-- ========================= -->
-<!-- ✅ SUMMARY -->
-<!-- ========================= -->
-<h2>Summary</h2>
+<!-- ✅ DASHBOARD CARDS -->
+<div class="cards">
 
-<p><b>Total Cash:</b> ${{ "%.2f"|format(total_cash) }}</p>
-<p><b>Total Invested:</b> ${{ "%.2f"|format(total_invested) }}</p>
-<p><b>Portfolio Value:</b> ${{ "%.2f"|format(portfolio_value) }}</p>
+    <div class="card">
+        <b>Portfolio Value</b><br>
+        ${{ "%.2f"|format(portfolio_value) }}
+    </div>
 
-<p>
-<b>Total P&L:</b>
-<span class="{% if total_pnl >= 0 %}positive{% else %}negative{% endif %}">
-    ${{ "%.2f"|format(total_pnl) }}
-</span>
-</p>
+    <div class="card">
+        <b>Cash</b><br>
+        ${{ total_cash }}
+    </div>
+
+    <div class="card">
+        <b>Realized P&L</b><br>
+        <span class="{% if realized_pnl >= 0 %}positive{% else %}negative{% endif %}">
+            ${{ realized_pnl }}
+        </span>
+    </div>
+
+    <div class="card">
+        <b>Unrealized P&L</b><br>
+        <span class="{% if unrealized_pnl >= 0 %}positive{% else %}negative{% endif %}">
+            ${{ unrealized_pnl }}
+        </span>
+    </div>
+
+    <div class="card">
+        <b>Total P&L</b><br>
+        <span class="{% if total_pnl >= 0 %}positive{% else %}negative{% endif %}">
+            ${{ total_pnl }}
+        </span>
+    </div>
+
+</div>
 
 <hr>
 
-<!-- ========================= -->
 <!-- ✅ ADD TRADE -->
-<!-- ========================= -->
-<div class="form-section">
 <h2>Add Trade</h2>
 
-<form method="post" action="/add_trade">
-    Account:
-    <select name="account">
-        {% for acc in accounts %}
-        <option value="{{ acc }}">{{ acc }}</option>
-        {% endfor %}
-    </select>
+<form action="/add_trade" method="post">
 
-    Date: <input type="date" name="date" required>
+    <div>
+        <label>Account:</label>
+        <select name="account">
+            {% for acc in accounts %}
+            <option value="{{ acc }}">{{ acc }}</option>
+            {% endfor %}
+        </select>
+    </div>
 
-    Symbol: <input type="text" name="stock" required>
+    <div>
+        <label>Date:</label>
+        <input type="date" name="date" required>
+    </div>
 
-    Type:
-    <select name="action">
-        <option value="BUY">BUY</option>
-        <option value="SELL">SELL</option>
-    </select>
+    <div>
+        <label>Symbol:</label>
+        <input type="text" name="stock" required>
+    </div>
 
-    Shares: <input type="number" step="any" name="shares">
+    <div>
+        <label>Type:</label>
+        <select name="action">
+            <option value="BUY">BUY</option>
+            <option value="SELL">SELL</option>
+        </select>
+    </div>
 
-    Price: <input type="number" step="any" name="price">
+    <div>
+        <label>Shares:</label>
+        <input type="number" step="any" name="shares" required>
+    </div>
 
-    Fees: <input type="number" step="any" name="fees">
+    <div>
+        <label>Price:</label>
+        <input type="number" step="any" name="price" required>
+    </div>
 
-    Lot: <input type="number" name="lot">
+    <div>
+        <label>Fees:</label>
+        <input type="number" step="any" name="fees" value="0">
+    </div>
 
-    <button type="submit">Add Trade</button>
+    <div>
+        <label>Lot ID:</label>
+        <input type="number" name="lot" value="0">
+    </div>
+
+    <button type="submit">➕ Add Trade</button>
 </form>
-</div>
-
-<!-- ========================= -->
-<!-- ✅ ADD CASH -->
-<!-- ========================= -->
-<div class="form-section">
-<h2>Add Cash (Deposit / Withdrawal)</h2>
-
-<form method="post" action="/add_cash">
-    Account:
-    <select name="account">
-        {% for acc in accounts %}
-        <option value="{{ acc }}">{{ acc }}</option>
-        {% endfor %}
-    </select>
-
-    Date: <input type="date" name="date" required>
-
-    Amount: <input type="number" step="any" name="amount" required>
-
-    Description: <input type="text" name="description">
-
-    <button type="submit">Add Cash</button>
-</form>
-</div>
 
 <hr>
 
-<!-- ========================= -->
+<!-- ✅ ADD CASH -->
+<h2>Add Deposit / Withdrawal</h2>
+
+<form action="/add_cash" method="post">
+
+    <div>
+        <label>Account:</label>
+        <select name="account">
+            {% for acc in accounts %}
+            <option value="{{ acc }}">{{ acc }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div>
+        <label>Date:</label>
+        <input type="date" name="date" required>
+    </div>
+
+    <div>
+        <label>Amount (+ / -):</label>
+        <input type="number" step="any" name="amount" required>
+    </div>
+
+    <div>
+        <label>Description:</label>
+        <input type="text" name="description">
+    </div>
+
+    <button type="submit">💰 Add Cash Entry</button>
+</form>
+
+<hr>
+
+<!-- ✅ POSITIONS -->
+<h2>Positions</h2>
+
+{% if positions %}
+<table>
+<tr>
+    <th>Symbol</th>
+    <th>Shares</th>
+    <th>Price</th>
+    <th>Avg Cost</th>
+    <th>Value</th>
+    <th>Unrealized P&L</th>
+</tr>
+
+{% for p in positions %}
+<tr>
+    <td>{{ p.symbol }}</td>
+    <td>{{ "%.2f"|format(p.shares) }}</td>
+    <td>${{ "%.2f"|format(p.price) }}</td>
+    <td>${{ "%.2f"|format(p.cost_basis) }}</td>
+    <td>${{ "%.2f"|format(p.value) }}</td>
+
+    
+    <td class="{% if p.unrealized_pnl >= 0 %}positive{% else %}negative{% endif %}">
+        ${{ "%.2f"|format(p.unrealized_pnl) }}
+
+    </td>
+</tr>
+{% endfor %}
+
+</table>
+{% else %}
+<p>No open positions</p>
+{% endif %}
+
+<hr>
+
 <!-- ✅ TRANSACTIONS -->
-<!-- ========================= -->
 <h2>Transactions</h2>
 
+{% if transactions %}
 <table>
 <tr>
     <th>Date</th>
@@ -174,52 +249,57 @@
     <th>Type</th>
     <th>Shares</th>
     <th>Price</th>
-    <th>Fees</th>
-    <th>Lot</th>
+    <th>Amount</th>
+    <th>Realized P&L</th>
     <th>Actions</th>
 </tr>
 
 {% for t in transactions %}
 <tr>
-    <td>{{ t.date }}</td>
+    <td>{{ t.date.strftime('%Y-%m-%d') if t.date else '' }}</td>
     <td>{{ t.account }}</td>
     <td>{{ t.symbol }}</td>
     <td>{{ t.type }}</td>
+
     <td>{{ "%.2f"|format(t.shares) }}</td>
     <td>${{ "%.2f"|format(t.price) }}</td>
-    <td>${{ "%.2f"|format(t.fees) }}</td>
-    <td>{{ t.lot_id }}</td>
+    <td>${{ "%.2f"|format(t.trade_amount) }}</td>
+
+    <td class="{% if t.realized_pnl >= 0 %}positive{% else %}negative{% endif %}">
+        ${{ "%.2f"|format(t.realized_pnl) }}
+    </td>
+    
+    </td>
 
     <td>
-        <a class="edit" href="/edit/{{ t.id }}">Edit</a> |
-        <a class="delete" href="/delete/{{ t.id }}" onclick="return confirm('Delete this trade?')">
-            Delete
-        </a>
+        <a href="/edit/{{ t.id }}">Edit</a> |
+        <a href="/delete/{{ t.id }}">Delete</a>
     </td>
 </tr>
 {% endfor %}
-
 </table>
+
+{% else %}
+<p>No transactions yet.</p>
+{% endif %}
 
 <hr>
 
-<!-- ========================= -->
-<!-- ✅ CASH FLOWS -->
-<!-- ========================= -->
-<h2>Cash Flows</h2>
+<!-- ✅ CASH TABLE -->
+<h2>Cash Activity</h2>
 
+{% if cash_flows %}
 <table>
 <tr>
     <th>Date</th>
     <th>Account</th>
     <th>Amount</th>
     <th>Description</th>
-    <th>Actions</th>
 </tr>
 
 {% for c in cash_flows %}
 <tr>
-    <td>{{ c.date }}</td>
+    <td>{{ c.date.strftime('%Y-%m-%d') if c.date else '' }}</td>
     <td>{{ c.account }}</td>
 
     <td class="{% if c.amount >= 0 %}positive{% else %}negative{% endif %}">
@@ -227,24 +307,17 @@
     </td>
 
     <td>{{ c.description }}</td>
-
-    <td>
-        <a class="delete" href="/delete_cash/{{ c.id }}" onclick="return confirm('Delete this entry?')">
-            Delete
-        </a>
-    </td>
 </tr>
 {% endfor %}
-
 </table>
+{% else %}
+<p>No cash activity</p>
+{% endif %}
 
 <hr>
 
-<!-- ========================= -->
 <!-- ✅ EQUITY CURVE -->
-<!-- ========================= -->
 <h2>Equity Curve</h2>
-
 <div>
     {{ equity_chart|safe }}
 </div>
