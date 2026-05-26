@@ -50,10 +50,28 @@
             padding: 10px 16px;
             font-size:  15px;
             cursor: pointer;
+            margin-right: 5px; /* ✅ ADDED */
         }
         input, select {
             padding: 5px;
             width:  100%;
+        /* ✅ Style Update */
+        #accountSelect {
+            width: 250px;
+        }
+                /* ✅ IMPROVEMENT for cleaner spacing */
+        #selectedTags {
+            margin-top: 8px;
+        }
+
+#selectedTags span {
+    margin: 4px;
+    display: inline-block;
+}
+
+        /* ✅ SPACING BETWEEN TAGS (NEW) */
+        #selectedTags span {
+            margin: 3px;
         }
     </style>
 </head>
@@ -65,14 +83,29 @@
 <!-- ✅ ACCOUNT FILTER -->
 <form method="get">
     <label><b>Account:</b></label>
-    <select name="account" multiple size="4" onchange="this.form.submit()">
+
+    <!-- ✅ MULTI SELECT -->    
+    <select id="accountSelect" name="account" multiple size="5">
         {% for acc in accounts %}
         <option value="{{ acc }}" {% if acc == selected_account %}selected{% endif %}>
             {{ acc }}
         </option>
         {% endfor %}
     </select>
+    
+    <br><br>
+
+    <!-- ✅ ACTION BUTTONS -->
+    <button type="button" onclick="selectAll()">Select All</button>
+    <button type="button" onclick="clearSelection()">Clear</button>
+    <button type="submit">Apply</button>
+
 </form>
+
+<!-- ✅ SELECTED TAGS -->
+<div id="selectedTags" style="margin-top:10px;"></div>
+
+<hr>
 
 <hr>
 
@@ -116,7 +149,7 @@
     </div>
     <input type="text" name="new_name" placeholder="New name" required>
     <div>
-        
+
     <button type="submit">Rename</button>
 
 </form>
@@ -444,6 +477,63 @@ window.onclick = function(event) {
         modal.style.display = "none";
     }
 }
+</script>
+
+<script>
+function selectAll() {
+    let select = document.getElementById("accountSelect");
+
+    for (let i = 0; i < select.options.length; i++) {
+        select.options[i].selected = true;
+    }
+
+    updateTags();
+}
+
+function clearSelection() {
+    let select = document.getElementById("accountSelect");
+
+    for (let i = 0; i < select.options.length; i++) {
+        select.options[i].selected = false;
+    }
+
+    updateTags();
+}
+
+// ✅ show selected accounts as pills
+function updateTags() {
+    let select = document.getElementById("accountSelect");
+    let container = document.getElementById("selectedTags");
+
+    container.innerHTML = ""; // clear
+
+    for (let i = 0; i < select.options.length; i++) {
+        if (select.options[i].selected) {
+            let tag = document.createElement("span");
+
+            tag.innerHTML = select.options[i].value;
+            tag.style = `
+                display:inline-block;
+                background:#007bff;
+                color:white;
+                padding:5px 10px;
+                border-radius:15px;
+                margin:3px;
+                font-size:12px;
+            `;
+
+            container.appendChild(tag);
+        }
+    }
+}
+
+// ✅ update tags on change
+document.getElementById("accountSelect").addEventListener("change", updateTags);
+
+// ✅ initialize on page load
+window.onload = function() {
+    updateTags();
+};
 </script>
 
 </body>
