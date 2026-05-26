@@ -63,12 +63,10 @@
         #selectedTags {
             margin-top: 8px;
         }
-
-#selectedTags span {
-    margin: 4px;
-    display: inline-block;
-}
-
+        #selectedTags span {
+            margin: 4px;
+            display: inline-block;
+        }
         /* ✅ SPACING BETWEEN TAGS (NEW) */
         #selectedTags span {
             margin: 3px;
@@ -509,18 +507,31 @@ function updateTags() {
 
     for (let i = 0; i < select.options.length; i++) {
         if (select.options[i].selected) {
+            let value = select.options[i].value;            
             let tag = document.createElement("span");
 
-            tag.innerHTML = select.options[i].value;
+            tag.innerHTML = value + " <b style='margin-left:5px; cursor:pointer;'>✕</b>";
             tag.style = `
                 display:inline-block;
                 background:#007bff;
                 color:white;
                 padding:5px 10px;
                 border-radius:15px;
-                margin:3px;
+                margin:4px;
                 font-size:12px;
+                cursor:pointer;
             `;
+
+            // ✅ remove selection on click
+            tag.onclick = function() {
+                for (let j = 0; j < select.options.length; j++) {
+                    if (select.options[j].value === value) {
+                        select.options[j].selected = false;
+                    }
+                }
+                updateTags();
+                document.getElementById("accountForm").submit();
+            };
 
             container.appendChild(tag);
         }
