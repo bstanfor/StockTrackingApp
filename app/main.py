@@ -349,6 +349,73 @@ def compute_metrics(trades, cash):
         "total_pnl": round(total_pnl, 2)
     }
 
+def account_performance(trades, cash): # ✅ Account Performance Dashboard
+    if trades.empty:
+        return []
+
+    trades = trades.copy()
+    cash = cash.copy()
+
+    results = []
+
+    accounts = trades["account"].unique()
+
+    for acc in accounts:
+        acc_trades = trades[trades["account"] == acc]
+        acc_cash = cash[cash["account"] == acc]
+
+        # ✅ realized P&L
+        realized = acc_trades["realized_pnl"].sum()
+
+        # ✅ invested capital (BUY trades)
+        invested = acc_trades[acc_trades["type"] == "BUY"]["trade_amount"].sum()
+
+        # ✅ remaining cost (open positions)
+        inventory = {}
+        value = 0
+
+        for _, row in acc_trades.iterrows():
+            sym = row["symbol"]
+            inventory.setdefault(sym, [])
+            
+            if row["type"] == "BUY":
+                inventory[sym].append([row["shares"], row["price"]])
+            elif row["type"] == "SELL":
+                remaining = row["shares"]
+                while remaining > 0 and inventory[sym]:
+                    lot = inventory[sym][0]
+                    used = min(remaining, lot[0])
+                    lot[0] -= used
+                    remaining -= used
+                    if lot[0] == 0:
+                        inventory[sym].pop(0)
+
+        # ✅ calculate unrealized
+        unrealized = 0
+        for sym, lots in inventory.items():
+            try:
+                price = yf.Ticker(sym).history(period="1d")["Close"].iloc[-1]
+            except:
+                price = 0
+
+            for shares, cost in lots:
+                unrealized += shares * (price - cost)
+                value += shares * price
+
+        total_pnl = realized + unrealized
+
+        # ✅ return %
+        total_cost = invested if invested != 0 else 1
+        pct = (total_pnl / total_cost) * 100
+
+        results.append({
+            "account": acc,
+            "pnl": round(total_pnl, 2),
+            "pct": round(pct, 2)
+        })
+
+    return results
+
 def equity_chart(trades, cash):
     if trades.empty and cash.empty:
         return ""
@@ -400,6 +467,7 @@ def index():
     metrics = compute_metrics(trades, cash)
     chart = equity_chart(trades, cash)
     positions = compute_positions(trades)
+    account_perf = account_performance(trades, cash) # ✅ Account Performance update
 
     # ✅ allocation chart (with cash)    
     alloc_chart = allocation_chart(positions, metrics["total_cash"])
@@ -414,6 +482,7 @@ def index():
         accounts= ["All"] + db_accounts,
         #  ✅ pass selected accounts
         selected_account=selected_accounts,
+        account_performance=account_perf,
         equity_chart=chart,
         **metrics
     )

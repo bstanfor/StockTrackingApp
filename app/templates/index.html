@@ -453,6 +453,61 @@ width:600px; max-height:85%; overflow:auto; position:relative; box-shadow: 0 10p
 
 <hr>
 
+<h2>Account Performance</h2>
+
+{% if account_performance %}
+
+<table>
+<tr>
+    <th>Account</th>
+    <th>Total P&L</th>
+    <th>Return %</th>
+</tr>
+
+{% for acc in account_performance %}
+<tr>
+    <td>{{ acc.account }}</td>
+
+    <td class="{% if acc.pnl >= 0 %}positive{% else %}negative{% endif %}">
+        ${{ "%.2f"|format(acc.pnl) }}
+    </td>
+
+    <td class="{% if acc.pct >= 0 %}positive{% else %}negative{% endif %}">
+        {{ "%.2f"|format(acc.pct) }}%
+    </td>
+</tr>
+{% endfor %}
+
+</table>
+
+{% else %}
+<p>No account data</p>
+{% endif %}
+
+<!-- ✅ BEST / WORST -->
+{% if account_performance %}
+
+{% set best = account_performance | sort(attribute='pct') | last %}
+{% set worst = account_performance | sort(attribute='pct') | first %}
+
+<br>
+
+<b>Best Account:</b>
+<span class="positive">
+    {{ best.account }} ({{ "%.2f"|format(best.pct) }}%)
+</span>
+
+<br>
+
+<b>Worst Account:</b>
+<span class="negative">
+    {{ worst.account }} ({{ "%.2f"|format(worst.pct) }}%)
+</span>
+
+{% endif %}
+<hr>
+
+
 <!-- ✅ EQUITY CURVE -->
 <h2>Equity Curve</h2>
 <div>
