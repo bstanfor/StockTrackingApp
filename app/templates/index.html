@@ -65,7 +65,7 @@
 <!-- ✅ ACCOUNT FILTER -->
 <form method="get">
     <label><b>Account:</b></label>
-    <select name="account" onchange="this.form.submit()">
+    <select name="account" multiple size="4" onchange="this.form.submit()">
         {% for acc in accounts %}
         <option value="{{ acc }}" {% if acc == selected_account %}selected{% endif %}>
             {{ acc }}
@@ -75,6 +75,52 @@
 </form>
 
 <hr>
+
+<!-- ✅ ACCOUNT MANAGEMENT -->
+<h2>Account Management</h2>
+
+<!-- ✅ ADD ACCOUNT -->
+<form action="/add_account" method="post">
+    <input type="text" name="account_name" placeholder="New account name" required>
+    <button type="submit">Add Account</button>
+</form>
+
+<h3>Existing Accounts</h3>
+
+<ul>
+{% for acc in accounts if acc != 'All' %}
+    <li>
+        {{ acc }}
+        | <a href="/delete_account/{{ acc }}" onclick="return confirm('Delete this account?')">
+            Delete
+          </a>
+    </li>
+{% endfor %}
+</ul>
+
+<hr>
+
+
+<h3>Rename Account</h3>
+
+<form action="/rename_account" method=""post">
+
+    <div>
+        <select name="old_name" required>
+        {% for acc in accounts if acc != 'All' %}
+        <option value="{{ acc }}">{{ acc }}</option>
+        {% endfor %}
+        </select>
+    <div>
+
+    </div>
+    <input type="text" name="new_name" placeholder="New name" required>
+    <div>
+        
+    <button type="submit">Rename</button>
+
+</form>
+
 
 <h2>Add Account</h2>
 

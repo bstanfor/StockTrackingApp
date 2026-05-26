@@ -374,22 +374,29 @@ def equity_chart(trades, cash):
 # ---------------------------
 @app.route("/")
 def index():
-    acc = request.args.get("account", "All")
-    
-    # ✅ load data
-    trades, cash = load_data()
+
+    # ✅ get selected accounts (multi-select)
+    selected_accounts = request.args.getlist("account")
     
     # ✅ load accounts from DB (NEW)
     db_accounts = load_accounts()
-    accounts = load_accounts()
+        
+    # ✅ fallback to All
+    if not selected_accounts or "All" in selected_accounts:
+        selected_accounts = db_accounts
 
-    # ✅ filter by selected account
-    if acc != "All":
-        trades = trades[trades["account"] == acc]
-        cash = cash[cash["account"] == acc]
+    # ✅ load data First (Critical Fix)
+    trades, cash = load_data()
+    
+    # ✅ ✅ Filter and EXTRA SAFETY STARTS HERE
+    if not trades.empty and "account" in trades.columns:
+        trades = trades[trades["account"].isin(selected_accounts)]
+
+    if not cash.empty and "account" in cash.columns:
+        cash = cash[cash["account"].isin(selected_accounts)]
+    
     # ✅ analytic
     trades = enrich_trades(trades)
-
     metrics = compute_metrics(trades, cash)
     chart = equity_chart(trades, cash)
     positions = compute_positions(trades)
@@ -403,11 +410,29 @@ def index():
         cash_flows=cash.to_dict("records"),
         positions=positions,
         allocation_chart=alloc_chart,
-        accounts= ["ALL"] + accounts,
-        selected_account=acc,
+        #  ✅ dropdown list
+        accounts= ["All"] + db_accounts,
+        #  ✅ pass selected accounts
+        selected_account=selected_accounts,
         equity_chart=chart,
         **metrics
     )
+
+@app.route("/delete_account/<name>")
+def delete_account(name):
+    conn = get_db_connection()
+
+    # ✅ prevent deleting accounts in use
+    trades = conn.execute(
+        "SELECT COUNT(*) FROM transactions WHERE account=?", (name,)
+    ).fetchone()[0]
+
+    if trades == 0:
+        conn.execute("DELETE FROM accounts WHERE name=?", (name,))
+        conn.commit()
+
+    conn.close()
+    return redirect("/")
 
 @app.route("/add_account", methods=["POST"])
 def add_account():
@@ -423,6 +448,23 @@ def add_account():
         pass  # avoid duplicate crash
 
     conn.close()
+    return redirect("/")
+
+@app.route("/rename_account", methods=["POST"])
+def rename_account():
+    old = request.form["old_name"]
+    new = request.form["new_name"]
+
+    conn = get_db_connection()
+
+    # ✅ update across tables
+    conn.execute("UPDATE accounts SET name=? WHERE name=?", (new, old))
+    conn.execute("UPDATE transactions SET account=? WHERE account=?", (new, old))
+    conn.execute("UPDATE cash_flows SET account=? WHERE account=?", (new, old))
+
+    conn.commit()
+    conn.close()
+
     return redirect("/")
 
 @app.route("/add_trade", methods=["POST"])
