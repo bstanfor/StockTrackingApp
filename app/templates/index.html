@@ -47,8 +47,13 @@
         }
 
         button {
-            padding: 6px 12px;
+            padding: 10px 16px;
+            font-size:  15px;
             cursor: pointer;
+        }
+        input, select {
+            padding: 5px;
+            width:  100%;
         }
     </style>
 </head>
@@ -81,7 +86,7 @@
 
     <div class="card">
         <b>Cash</b><br>
-        ${{ total_cash }}
+        ${{ "%.2f"|format(total_cash) }}
     </div>
 
     <div class="card">
@@ -109,9 +114,21 @@
 
 <hr>
 
-<button onclick="toggleForms()">➕ Add Transaction</button>
+<!-- ✅ BUTTON -->
+<button onclick="openModal()">➕ Add Transaction</button>
 
-<div id="transactionForms" style="display:none; margin-top:20px;">
+<!-- ✅ MODAL -->
+<div id="modalOverlay" style="display:none; position:fixed; top:0; left:0;
+width:100%; height:100%; background: rgba(0,0,0,0.5);
+justify-content:center; align-items:center;">
+
+<div style="background:white; padding:20px; border-radius:10px;
+width:600px; max-height:80%; overflow:auto; position:relative;">
+
+<!-- ✅ CLOSE -->
+<span onclick="closeModal()" style="position:absolute; top:10px; right:15px;
+cursor:pointer; font-size:20px;">&times;</span>
+
 <!-- ✅ ADD TRADE -->
 <h2>Add Trade</h2>
 
@@ -119,7 +136,7 @@
 
     <div>
         <label>Account:</label>
-        <select name="account">
+        <select name="account" required>
             {% for acc in accounts %}
             <option value="{{ acc }}">{{ acc }}</option>
             {% endfor %}
@@ -165,10 +182,6 @@
     </div>
 
     <button type="submit">➕ Add Trade</button>
-    
-    <button style="padding:10px 16px; font-size:16px; margin-top:10px;">
-        ➕ Add Transaction
-    </button>
 
 </form>
 
@@ -181,7 +194,7 @@
 
     <div>
         <label>Account:</label>
-        <select name="account">
+        <select name="account" required>
             {% for acc in accounts %}
             <option value="{{ acc }}">{{ acc }}</option>
             {% endfor %}
@@ -204,10 +217,10 @@
     </div>
 
     <button type="submit">💰 Add Cash Entry</button>
+
 </form>
 
-<hr>
-
+</div>
 </div>
 
 <!-- ✅ POSITIONS -->
@@ -242,6 +255,10 @@
     
     <td class="{% if p.unrealized_pct >= 0 %}positive{% else %}negative{% endif %}">
         {{ "%.2f"|format(p.unrealized_pct) }}%
+    </td>
+    
+    <td>
+        {{ "%.2f"|format(p.allocation_pct) }}%
     </td>
 
 </tr>
@@ -296,8 +313,6 @@
         {{ "%.2f"|format(t.realized_pct) }}%
     </td>
 
-    </td>
-
     <td>
         <a href="/edit/{{ t.id }}">Edit</a> |
         <a href="/delete/{{ t.id }}">Delete</a>
@@ -350,13 +365,19 @@
 </div>
 
 <script>
-function toggleForms() {
-    var x = document.getElementById("transactionForms");
+function openModal() {
+    document.getElementById("modalOverlay").style.display = "flex";
+}
 
-    if (x.style.display === "none") {
-        x.style.display = "block";
-    } else {
-        x.style.display = "none";
+function closeModal() {
+    document.getElementById("modalOverlay").style.display = "none";
+}
+
+// ✅ Close if clicking outside modal
+window.onclick = function(event) {
+    var modal = document.getElementById("modalOverlay");
+    if (event.target === modal) {
+        modal.style.display = "none";
     }
 }
 </script>
