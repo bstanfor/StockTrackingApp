@@ -8,7 +8,6 @@ import yfinance as yf
 app = Flask(__name__)
 db_file = "finance.db"
 
-ACCOUNTS = ["401K-B", "401K-R", "B-Vanguard-R", "K-Vanguard-R"]
 
 # ---------------------------
 # DB
@@ -21,6 +20,14 @@ def get_db_connection():
 def init_db():
     conn = get_db_connection()
     c = conn.cursor()
+
+
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS accounts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT UNIQUE
+   )
+    """)
 
     c.execute("""
     CREATE TABLE IF NOT EXISTS transactions (
@@ -74,6 +81,13 @@ def load_data():
         cash["date"] = pd.to_datetime(cash["date"])
 
     return trades, cash
+
+def load_accounts():
+    conn = get_db_connection()
+    df = pd.read_sql("SELECT name FROM accounts ORDER BY name", conn)
+    conn.close()
+
+    return df["name"].tolist()
 
 # ---------------------------
 # ANALYTICS
@@ -361,30 +375,55 @@ def equity_chart(trades, cash):
 @app.route("/")
 def index():
     acc = request.args.get("account", "All")
-
+    
+    # ✅ load data
     trades, cash = load_data()
+    
+    # ✅ load accounts from DB (NEW)
+    db_accounts = load_accounts()
+    accounts = load_accounts()
 
+    # ✅ filter by selected account
     if acc != "All":
         trades = trades[trades["account"] == acc]
         cash = cash[cash["account"] == acc]
-
+    # ✅ analytic
     trades = enrich_trades(trades)
 
     metrics = compute_metrics(trades, cash)
     chart = equity_chart(trades, cash)
     positions = compute_positions(trades)
+
+    # ✅ allocation chart (with cash)    
     alloc_chart = allocation_chart(positions, metrics["total_cash"])
+
     return render_template(
         "index.html",
         transactions=trades.to_dict("records"),
         cash_flows=cash.to_dict("records"),
         positions=positions,
         allocation_chart=alloc_chart,
-        accounts=["All"] + ACCOUNTS,
+        accounts= ["ALL"] + accounts,
         selected_account=acc,
         equity_chart=chart,
         **metrics
     )
+
+@app.route("/add_account", methods=["POST"])
+def add_account():
+    conn = get_db_connection()
+
+    try:
+        conn.execute(
+            "INSERT INTO accounts(name) VALUES (?)",
+            (request.form["account_name"],)
+        )
+        conn.commit()
+    except:
+        pass  # avoid duplicate crash
+
+    conn.close()
+    return redirect("/")
 
 @app.route("/add_trade", methods=["POST"])
 def add_trade():
