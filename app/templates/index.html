@@ -120,19 +120,30 @@
 <!-- ✅ MODAL -->
 <div id="modalOverlay" style="display:none; position:fixed; top:0; left:0;
 width:100%; height:100%; background: rgba(0,0,0,0.5);
-justify-content:center; align-items:center;">
+justify-content:center; align-items:center; z-index:9999;">
 
-<div style="background:white; padding:20px; border-radius:10px;
-width:600px; max-height:80%; overflow:auto; position:relative;">
+<div style="background:white; padding:25px; border-radius:12px;
+width:600px; max-height:85%; overflow:auto; position:relative; box-shadow: 0 10px 25px rgba(0,0,0,0.3);">
 
 <!-- ✅ CLOSE -->
-<span onclick="closeModal()" style="position:absolute; top:10px; right:15px;
-cursor:pointer; font-size:20px;">&times;</span>
+
+<div style="display:flex; justify-content:space-between; align-items:center;">
+    <h2 style="margin:0;">Add Transaction</h2>
+
+    <span onclick="closeModal()" style="
+        cursor:pointer;
+        font-size:22px;
+        font-weight:bold;
+        padding:5px;
+    ">&times;</span>
+</div>
+
+<hr>
 
 <!-- ✅ ADD TRADE -->
 <h2>Add Trade</h2>
 
-<form action="/add_trade" method="post">
+<form action="/add_trade" method="post" onsubmit="closeModal()">
 
     <div>
         <label>Account:</label>
@@ -190,7 +201,7 @@ cursor:pointer; font-size:20px;">&times;</span>
 <!-- ✅ ADD CASH -->
 <h2>Add Deposit / Withdrawal</h2>
 
-<form action="/add_cash" method="post">
+<form action="/add_cash" method="post" onsubmit="closeModal()">
 
     <div>
         <label>Account:</label>
