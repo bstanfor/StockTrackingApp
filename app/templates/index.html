@@ -55,6 +55,7 @@
         input, select {
             padding: 5px;
             width:  100%;
+        }
         /* ✅ Style Update */
         #accountSelect {
             width: 250px;
@@ -63,14 +64,11 @@
         #selectedTags {
             margin-top: 8px;
         }
+        /* ✅ SPACING BETWEEN TAGS (NEW) */
         #selectedTags span {
             margin: 4px;
             display: inline-block;
-        }
-        /* ✅ SPACING BETWEEN TAGS (NEW) */
-        #selectedTags span {
-            margin: 3px;
-        }
+        }        
     </style>
 </head>
 
@@ -78,14 +76,32 @@
 
 <h1>📊 Portfolio Dashboard</h1>
 
+<h2>Total Portfolio Value</h2>
+<div style="font-size:28px; font-weight:bold; margin-bottom:10px;">
+    ${{ "%.2f"|format(portfolio_value) }}
+</div>
+
+<form method="get" style="margin-bottom:15px;">
+
+    {% for acc in selected_account %}
+    <input type="hidden" name="account" value="{{ acc }}">
+    {% endfor %}
+
+    <button name="period" value="1M" {% if selected_period == "1M" %}style="background:black;color:white"{% endif %}>1M</button>
+    <button name="period" value="YTD" {% if selected_period == "YTD" %}style="background:black;color:white"{% endif %}>YTD</button>
+    <button name="period" value="1Y" {% if selected_period == "1Y" %}style="background:black;color:white"{% endif %}>1Y</button>
+    <button name="period" value="3Y" {% if selected_period == "3Y" %}style="background:black;color:white"{% endif %}>3Y</button>
+
+</form>
+
 <!-- ✅ ACCOUNT FILTER -->
-<form method="get">
+<form method="get" id="accountForm">
     <label><b>Account:</b></label>
 
     <!-- ✅ MULTI SELECT -->    
     <select id="accountSelect" name="account" multiple size="5">
         {% for acc in accounts %}
-        <option value="{{ acc }}" {% if acc == selected_account %}selected{% endif %}>
+        <option value="{{ acc }}" {% if acc in selected_account %}selected{% endif %}>
             {{ acc }}
         </option>
         {% endfor %}
@@ -111,7 +127,7 @@
 <h2>Account Management</h2>
 
 <!-- ✅ ADD ACCOUNT -->
-<form action="/add_account" method="post">
+<form action="/add_account" method="post" style="margin-bottom:15px;">
     <input type="text" name="account_name" placeholder="New account name" required>
     <button type="submit">Add Account</button>
 </form>
@@ -134,7 +150,7 @@
 
 <h3>Rename Account</h3>
 
-<form action="/rename_account" method=""post">
+<form action="/rename_account" method="post">
 
     <div>
         <select name="old_name" required>
@@ -150,14 +166,6 @@
 
     <button type="submit">Rename</button>
 
-</form>
-
-
-<h2>Add Account</h2>
-
-<form action="/add_account" method="post" style="margin-bottom:15px;">
-    <input type="text" name="account_name" placeholder="New account name" required>
-    <button type="submit">Add Account</button>
 </form>
 
 <!-- ✅ DASHBOARD CARDS -->
@@ -507,12 +515,6 @@ width:600px; max-height:85%; overflow:auto; position:relative; box-shadow: 0 10p
 {% endif %}
 <hr>
 
-
-<!-- ✅ EQUITY CURVE -->
-<h2>Equity Curve</h2>
-<div>
-    {{ equity_chart|safe }}
-</div>
 
 <script>
 function openModal() {

@@ -420,21 +420,60 @@ def equity_chart(trades, cash):
     if trades.empty and cash.empty:
         return ""
 
-    trades["cf"] = trades.apply(
-        lambda x: -x["shares"] * x["price"] - x["fees"]
-        if x["type"] == "BUY"
-        else x["shares"] * x["price"] - x["fees"],
-        axis=1
+
+    df = trades.copy()
+    df["date"] = pd.to_datetime(df["date"])
+
+
+    cash_df = cash.copy()
+    if not cash_df.empty:
+        cash_df["date"] = pd.to_datetime(cash_df["date"])
+
+    # ✅ Determine date range
+    today = pd.Timestamp.today()
+
+    if period == "1M":
+        start = today - pd.DateOffset(months=1)
+    elif period == "YTD":
+        start = pd.Timestamp(year=today.year, month=1, day=1)
+    elif period == "3Y":
+        start = today - pd.DateOffset(years=3)
+    else:  # default 1Y
+        start = today - pd.DateOffset(years=1)
+
+    df = df[df["date"] >= start]
+    cash_df = cash_df[cash_df["date"] >= start]
+
+    # ✅ Combine into timeline
+    all_dates = pd.date_range(start=start, end=today, freq="D")
+    equity = pd.DataFrame(index=all_dates)
+    equity["value"] = 0
+
+    # ✅ compute cumulative equity
+    running_value = 0
+
+    for date in all_dates:
+        # trades
+        day_trades = df[df["date"] == date]
+        running_value += day_trades["realized_pnl"].sum()
+
+        # cash
+        day_cash = cash_df[cash_df["date"] == date]
+        running_value += day_cash["amount"].sum() if not cash_df.empty else 0
+
+        equity.loc[date, "value"] = running_value
+
+    import plotly.express as px
+
+    fig = px.line(
+        equity,
+        x=equity.index,
+        y="value",
+        title="Portfolio Balance"
     )
 
-    t = trades[["date", "cf"]]
-    c = cash.rename(columns={"amount": "cf"})[["date", "cf"]]
-
-    df = pd.concat([t, c]).sort_values("date")
-    df["equity"] = df["cf"].cumsum()
-
-    fig = px.line(df, x="date", y="equity", title="Equity Curve")
     return fig.to_html(full_html=False)
+
 
 # ---------------------------
 # ROUTES
@@ -465,9 +504,11 @@ def index():
     # ✅ analytic
     trades = enrich_trades(trades)
     metrics = compute_metrics(trades, cash)
-    chart = equity_chart(trades, cash)
+    period = request.args.get("period", "1Y")
+    chart = equity_chart(trades, cash, period="1Y")
     positions = compute_positions(trades)
     account_perf = account_performance(trades, cash) # ✅ Account Performance update
+ 
 
     # ✅ allocation chart (with cash)    
     alloc_chart = allocation_chart(positions, metrics["total_cash"])
@@ -484,6 +525,7 @@ def index():
         selected_account=selected_accounts,
         account_performance=account_perf,
         equity_chart=chart,
+        selected_period=period,
         **metrics
     )
 
