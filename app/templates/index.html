@@ -21,9 +21,7 @@
             text-align: center;
         }
 
-        th {
-            background-color: #f2f2f2;
-        }
+        th { background-color: #f2f2f2; }
 
         .positive { color: green; font-weight: bold; }
         .negative { color: red; font-weight: bold; }
@@ -52,6 +50,17 @@
             cursor: pointer;
             margin-right: 5px; /* ✅ ADDED */
         }
+        
+        /* ✅ tab buttons */
+        button {
+            border-radius: 6px;
+            border: 1px solid #ccc;
+            background: #f5f5f5;
+        }
+        button:hover {
+            background: #ddd;
+        }
+
         input, select {
             padding: 5px;
             width:  100%;
@@ -76,27 +85,20 @@
 
 <h1>📊 Portfolio Dashboard</h1>
 
-<h2>Total Portfolio Value</h2>
-<div style="font-size:28px; font-weight:bold; margin-bottom:10px;">
-    ${{ "%.2f"|format(portfolio_value) }}
+<!-- ✅ TABS NAV -->
+<div style="margin-bottom:15px;">
+    <button onclick="showTab('dashboard', this)">📊 Dashboard</button>
+    <button onclick="showTab('positions', this)">📦 Positions</button>
+    <button onclick="showTab('activity', this)">📄 Activity</button>
 </div>
 
-<form method="get" style="margin-bottom:15px;">
+<hr>
 
-    {% for acc in selected_account %}
-    <input type="hidden" name="account" value="{{ acc }}">
-    {% endfor %}
 
-    <button name="period" value="1M" {% if selected_period == "1M" %}style="background:black;color:white"{% endif %}>1M</button>
-    <button name="period" value="YTD" {% if selected_period == "YTD" %}style="background:black;color:white"{% endif %}>YTD</button>
-    <button name="period" value="1Y" {% if selected_period == "1Y" %}style="background:black;color:white"{% endif %}>1Y</button>
-    <button name="period" value="3Y" {% if selected_period == "3Y" %}style="background:black;color:white"{% endif %}>3Y</button>
-
-</form>
 
 <!-- ✅ ACCOUNT FILTER -->
 <form method="get" id="accountForm">
-    <label><b>Account:</b></label>
+    <label><b>Account:</b></br>
 
     <!-- ✅ MULTI SELECT -->    
     <select id="accountSelect" name="account" multiple size="5">
@@ -121,210 +123,53 @@
 
 <hr>
 
+
+<!-- ✅ DASHBOARD TAB -->
+<div id="dashboardTab">
+
+<h2>Total Portfolio Value</h2>
+<div style="font-size:28px; font-weight:bold;">
+    ${{ "%.2f"|format(portfolio_value) }}
 <hr>
 
-<!-- ✅ ACCOUNT MANAGEMENT -->
-<h2>Account Management</h2>
 
-<!-- ✅ ADD ACCOUNT -->
-<form action="/add_account" method="post" style="margin-bottom:15px;">
-    <input type="text" name="account_name" placeholder="New account name" required>
-    <button type="submit">Add Account</button>
-</form>
+</div>
 
-<h3>Existing Accounts</h3>
+<div class="{% if total_pnl >= 0 %}positive{% else %}negative{% endif %}">
+    ${{ "%.2f"|format(total_pnl) }}
+</div>
 
-<ul>
-{% for acc in accounts if acc != 'All' %}
-    <li>
-        {{ acc }}
-        | <a href="/delete_account/{{ acc }}" onclick="return confirm('Delete this account?')">
-            Delete
-          </a>
-    </li>
+<h2>Account Performance</h2>
+
+{% if account_performance %}
+<table>
+<tr>
+    <th>Account</th>
+    <th>P&L</th>
+    <th>Return %</th>
+</tr>
+{% for acc in account_performance %}
+<tr>
+    <td>{{ acc.account }}</td>
+    <td class="{% if acc.pnl >= 0 %}positive{% else %}negative{% endif %}">
+        ${{ "%.2f"|format(acc.pnl) }}
+    </td>
+    <td class="{% if acc.pct >= 0 %}positive{% else %}negative{% endif %}">
+        {{ "%.2f"|format(acc.pct) }}%
+    </td>
+</tr>
 {% endfor %}
-</ul>
+</table>
+{% endif %}
 
-<hr>
+<h2>Portfolio Balance</h2>
+<div>{{ equity_chart|safe }}</div>
 
 
-<h3>Rename Account</h3>
-
-<form action="/rename_account" method="post">
-
-    <div>
-        <select name="old_name" required>
-        {% for acc in accounts if acc != 'All' %}
-        <option value="{{ acc }}">{{ acc }}</option>
-        {% endfor %}
-        </select>
-    <div>
-
-    </div>
-    <input type="text" name="new_name" placeholder="New name" required>
-    <div>
-
-    <button type="submit">Rename</button>
-
-</form>
-
-<!-- ✅ DASHBOARD CARDS -->
-<div class="cards">
-
-    <div class="card">
-        <b>Portfolio Value</b><br>
-        ${{ "%.2f"|format(portfolio_value) }}
-    </div>
-
-    <div class="card">
-        <b>Cash</b><br>
-        ${{ "%.2f"|format(total_cash) }}
-    </div>
-
-    <div class="card">
-        <b>Realized P&L</b><br>
-        <span class="{% if realized_pnl >= 0 %}positive{% else %}negative{% endif %}">
-            ${{ realized_pnl }}
-        </span>
-    </div>
-
-    <div class="card">
-        <b>Unrealized P&L</b><br>
-        <span class="{% if unrealized_pnl >= 0 %}positive{% else %}negative{% endif %}">
-            ${{ unrealized_pnl }}
-        </span>
-    </div>
-
-    <div class="card">
-        <b>Total P&L</b><br>
-        <span class="{% if total_pnl >= 0 %}positive{% else %}negative{% endif %}">
-            ${{ total_pnl }}
-        </span>
-    </div>
 
 </div>
 
-<hr>
-
-<!-- ✅ BUTTON -->
-<button onclick="openModal()">➕ Add Transaction</button>
-
-<!-- ✅ MODAL -->
-<div id="modalOverlay" style="display:none; position:fixed; top:0; left:0;
-width:100%; height:100%; background: rgba(0,0,0,0.5);
-justify-content:center; align-items:center; z-index:9999;">
-
-<div style="background:white; padding:25px; border-radius:12px;
-width:600px; max-height:85%; overflow:auto; position:relative; box-shadow: 0 10px 25px rgba(0,0,0,0.3);">
-
-<!-- ✅ CLOSE -->
-
-<div style="display:flex; justify-content:space-between; align-items:center;">
-    <h2 style="margin:0;">Add Transaction</h2>
-
-    <span onclick="closeModal()" style="
-        cursor:pointer;
-        font-size:22px;
-        font-weight:bold;
-        padding:5px;
-    ">&times;</span>
-</div>
-
-<hr>
-
-<!-- ✅ ADD TRADE -->
-<h2>Add Trade</h2>
-
-<form action="/add_trade" method="post" onsubmit="closeModal()">
-
-    <div>
-        <label>Account:</label>
-        <select name="account" required>
-            {% for acc in accounts %}
-            <option value="{{ acc }}">{{ acc }}</option>
-            {% endfor %}
-        </select>
-    </div>
-
-    <div>
-        <label>Date:</label>
-        <input type="date" name="date" required>
-    </div>
-
-    <div>
-        <label>Symbol:</label>
-        <input type="text" name="stock" required>
-    </div>
-
-    <div>
-        <label>Type:</label>
-        <select name="action">
-            <option value="BUY">BUY</option>
-            <option value="SELL">SELL</option>
-        </select>
-    </div>
-
-    <div>
-        <label>Shares:</label>
-        <input type="number" step="any" name="shares" required>
-    </div>
-
-    <div>
-        <label>Price:</label>
-        <input type="number" step="any" name="price" required>
-    </div>
-
-    <div>
-        <label>Fees:</label>
-        <input type="number" step="any" name="fees" value="0">
-    </div>
-
-    <div>
-        <label>Lot ID:</label>
-        <input type="number" name="lot" value="0">
-    </div>
-
-    <button type="submit">➕ Add Trade</button>
-
-</form>
-
-<hr>
-
-<!-- ✅ ADD CASH -->
-<h2>Add Deposit / Withdrawal</h2>
-
-<form action="/add_cash" method="post" onsubmit="closeModal()">
-
-    <div>
-        <label>Account:</label>
-        <select name="account" required>
-            {% for acc in accounts %}
-            <option value="{{ acc }}">{{ acc }}</option>
-            {% endfor %}
-        </select>
-    </div>
-
-    <div>
-        <label>Date:</label>
-        <input type="date" name="date" required>
-    </div>
-
-    <div>
-        <label>Amount (+ / -):</label>
-        <input type="number" step="any" name="amount" required>
-    </div>
-
-    <div>
-        <label>Description:</label>
-        <input type="text" name="description">
-    </div>
-
-    <button type="submit">💰 Add Cash Entry</button>
-
-</form>
-
-</div>
-</div>
+<div id="positionsTab">
 
 <!-- ✅ POSITIONS -->
 <h2>Positions</h2>
@@ -378,6 +223,13 @@ width:600px; max-height:85%; overflow:auto; position:relative; box-shadow: 0 10p
 <div>
     {{ allocation_chart|safe }}
 </div>
+
+<div id="activityTab" style="display:none;">
+
+ </div>
+ 
+ <!-- ✅ ACTIVITY TAB -->
+ <div id="activityTab" style="display:none;">
 
 <!-- ✅ TRANSACTIONS -->
 <h2>Transactions</h2>
@@ -458,65 +310,83 @@ width:600px; max-height:85%; overflow:auto; position:relative; box-shadow: 0 10p
 {% else %}
 <p>No cash activity</p>
 {% endif %}
-
+</div>
 <hr>
 
-<h2>Account Performance</h2>
+<div>
 
-{% if account_performance %}
-
-<table>
-<tr>
-    <th>Account</th>
-    <th>Total P&L</th>
-    <th>Return %</th>
-</tr>
-
-{% for acc in account_performance %}
-<tr>
-    <td>{{ acc.account }}</td>
-
-    <td class="{% if acc.pnl >= 0 %}positive{% else %}negative{% endif %}">
-        ${{ "%.2f"|format(acc.pnl) }}
-    </td>
-
-    <td class="{% if acc.pct >= 0 %}positive{% else %}negative{% endif %}">
-        {{ "%.2f"|format(acc.pct) }}%
-    </td>
-</tr>
-{% endfor %}
-
-</table>
-
-{% else %}
-<p>No account data</p>
-{% endif %}
-
-<!-- ✅ BEST / WORST -->
-{% if account_performance %}
-
-{% set best = account_performance | sort(attribute='pct') | last %}
-{% set worst = account_performance | sort(attribute='pct') | first %}
-
-<br>
-
-<b>Best Account:</b>
-<span class="positive">
-    {{ best.account }} ({{ "%.2f"|format(best.pct) }}%)
-</span>
-
-<br>
-
-<b>Worst Account:</b>
-<span class="negative">
-    {{ worst.account }} ({{ "%.2f"|format(worst.pct) }}%)
-</span>
-
-{% endif %}
-<hr>
-
-
+<!-- ✅ JAVASCRIPT -->
 <script>
+function showTab(tab, btn=null) {
+    document.getElementById("dashboardTab").style.display = "none";
+    document.getElementById("positionsTab").style.display = "none";
+    document.getElementById("activityTab").style.display = "none";
+
+    document.getElementById(tab + "Tab").style.display = "block";
+
+    localStorage.setItem("activeTab", tab);
+
+    let buttons = document.querySelectorAll("button");
+    buttons.forEach(b => b.style.background = "#f5f5f5");
+	
+    if (btn) {
+        btn.style.background = "#333";
+        btn.style.color = "white";
+		
+    }
+}
+	
+function selectAll() {
+    let select = document.getElementById("accountSelect");
+
+    for (let i = 0; i < select.options.length; i++) {
+        select.options[i].selected = true;
+    }
+
+    updateTags();
+}
+
+function clearSelection() {
+    let select = document.getElementById("accountSelect");
+
+    for (let i = 0; i < select.options.length; i++) {
+        select.options[i].selected = false;
+    }
+
+    updateTags();
+}
+									  
+function updateTags() {
+    let select = document.getElementById("accountSelect");
+    let container = document.getElementById("selectedTags");
+    container.innerHTML = "";
+
+    for (let i = 0; i < select.options.length; i++) {
+        if (select.options[i].selected) {
+            let val = select.options[i].value;
+            let tag = document.createElement("span");
+            tag.innerHTML = val + " ✕";
+            tag.style = "background:#007bff;color:white;padding:5px 10px;border-radius:15px;margin:4px;cursor:pointer;";
+            tag.onclick = function() {
+			    select.options[i].selected = false;
+				updateTags();
+                document.getElementById("accountForm").submit();
+            };
+            container.appendChild(tag);
+        }
+    }
+}
+															
+window.onload = function() {
+    updateTags();
+    let tab = localStorage.getItem("activeTab") || "dashboard";
+    showTab(tab);
+};
+
+</script>
+
+</body>
+</html>
 function openModal() {
     document.getElementById("modalOverlay").style.display = "flex";
 }
@@ -537,21 +407,17 @@ window.onclick = function(event) {
 <script>
 function selectAll() {
     let select = document.getElementById("accountSelect");
-
     for (let i = 0; i < select.options.length; i++) {
         select.options[i].selected = true;
     }
-
     updateTags();
 }
 
 function clearSelection() {
     let select = document.getElementById("accountSelect");
-
     for (let i = 0; i < select.options.length; i++) {
         select.options[i].selected = false;
     }
-
     updateTags();
 }
 
@@ -559,14 +425,11 @@ function clearSelection() {
 function updateTags() {
     let select = document.getElementById("accountSelect");
     let container = document.getElementById("selectedTags");
-
     container.innerHTML = ""; // clear
-
     for (let i = 0; i < select.options.length; i++) {
         if (select.options[i].selected) {
             let value = select.options[i].value;            
             let tag = document.createElement("span");
-
             tag.innerHTML = value + " <b style='margin-left:5px; cursor:pointer;'>✕</b>";
             tag.style = `
                 display:inline-block;
@@ -578,7 +441,6 @@ function updateTags() {
                 font-size:12px;
                 cursor:pointer;
             `;
-
             // ✅ remove selection on click
             tag.onclick = function() {
                 for (let j = 0; j < select.options.length; j++) {
@@ -589,7 +451,6 @@ function updateTags() {
                 updateTags();
                 document.getElementById("accountForm").submit();
             };
-
             container.appendChild(tag);
         }
     }
@@ -598,10 +459,34 @@ function updateTags() {
 // ✅ update tags on change
 document.getElementById("accountSelect").addEventListener("change", updateTags);
 
-// ✅ initialize on page load
+// ✅ initialize on page load to load last tab on page load
 window.onload = function() {
     updateTags();
+    let savedTab = localStorage.getItem("activeTab") || "dashboard";
+    // trigger tab display
+    showTab(savedTab);
 };
+
+</script>
+
+<script>
+function showTab(tab, btn=null) {
+    // hide all tabs
+    document.getElementById("dashboardTab").style.display = "none";
+    document.getElementById("positionsTab").style.display = "none";
+    document.getElementById("activityTab").style.display = "none";
+    // show selected
+    document.getElementById(tab + "Tab").style.display = "block";
+    // ✅ save selection
+    localStorage.setItem("activeTab", tab);
+    // ✅ highlight active tab
+    let buttons = document.querySelectorAll("div button");
+    buttons.forEach(b => b.style.background = "#f5f5f5");
+    if (btn) {
+        btn.style.background = "#333";
+        btn.style.color = "white";
+    }
+}
 </script>
 
 </body>

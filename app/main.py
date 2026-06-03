@@ -416,7 +416,7 @@ def account_performance(trades, cash): # ✅ Account Performance Dashboard
 
     return results
 
-def equity_chart(trades, cash):
+def equity_chart(trades, cash, period="1Y"):
     if trades.empty and cash.empty:
         return ""
 
