@@ -3,16 +3,21 @@
 <head>
     <title>Portfolio Dashboard</title>
 
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
     <style>
-        body { font-family: Arial; margin: 20px; }
+        body {
+            font-family: Arial;
+            margin: 15px;
+        }
 
         h1 { margin-bottom: 10px; }
-        h2 { margin-top: 30px; }
 
         table {
             border-collapse: collapse;
             width: 100%;
             margin-top: 10px;
+            font-size: 14px;
         }
 
         th, td {
@@ -26,43 +31,49 @@
         .positive { color: green; font-weight: bold; }
         .negative { color: red; font-weight: bold; }
 
-        button {
-            padding: 10px 16px;
+        /* ✅ MODERN TAB BAR */
+        .tab-bar {
+            display: flex;
+            justify-content: space-around;
+            border-bottom: 2px solid #ddd;
+            margin-bottom: 15px;
+        }
+
+        .tab-btn {
+            flex: 1;
+            padding: 12px;
+            text-align: center;
             cursor: pointer;
-            border-radius: 6px;
-            border: 1px solid #ccc;
+            background: white;
+            border: none;
+            border-bottom: 3px solid transparent;
+            font-size: 15px;
+            color: black; /* ✅ FIXED TEXT VISIBILITY */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .tab-btn:hover {
             background: #f5f5f5;
         }
 
-        button.active {
-            background: #333;
-            color: white;
+        .tab-btn.active {
+            border-bottom: 3px solid #007bff;
+            font-weight: bold;
+            color: #007bff;
         }
 
-        button:hover {
-            background: #ddd;
+        /* ✅ responsive icon + text */
+        .tab-icon {
+            font-size: 18px;
         }
 
-        input, select {
-            padding: 5px;
-            width: 100%;
+        .tab-label {
+            font-size: 12px;
         }
 
-        #accountSelect {
-            width: 250px;
-        }
-
-        #selectedTags span {
-            margin: 4px;
-            display: inline-block;
-            background: #007bff;
-            color: white;
-            padding: 5px 10px;
-            border-radius: 15px;
-            cursor: pointer;
-        }
-
-        /* ✅ Smooth tab transitions */
         .tab {
             display: none;
             animation: fadeIn 0.2s ease-in;
@@ -72,6 +83,45 @@
             from { opacity: 0; }
             to { opacity: 1; }
         }
+
+        /* ✅ forms */
+        input, select {
+            padding: 6px;
+            width: 100%;
+        }
+
+        button {
+            padding: 8px 12px;
+            margin-top: 5px;
+            cursor: pointer;
+        }
+
+        /* ✅ tag pills */
+        #selectedTags span {
+            display: inline-block;
+            background: #007bff;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 15px;
+            margin: 4px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        /* ✅ mobile adjustments */
+        @media (max-width: 600px) {
+            table {
+                font-size: 12px;
+            }
+
+            .tab-label {
+                font-size: 11px;
+            }
+
+            h2 {
+                font-size: 16px;
+            }
+        }
     </style>
 </head>
 
@@ -79,16 +129,25 @@
 
 <h1>📊 Portfolio Dashboard</h1>
 
-<!-- ✅ Tabs -->
-<div style="margin-bottom:15px;">
-    <button id="btn-dashboard" onclick="showTab('dashboard')">📊 Dashboard</button>
-    <button id="btn-positions" onclick="showTab('positions')">📦 Positions</button>
-    <button id="btn-activity" onclick="showTab('activity')">📄 Activity</button>
+<!-- ✅ MODERN TAB BAR -->
+<div class="tab-bar">
+    <div id="btn-dashboard" class="tab-btn" onclick="showTab('dashboard')">
+        <div class="tab-icon">📊</div>
+        <div class="tab-label">Dashboard</div>
+    </div>
+
+    <div id="btn-positions" class="tab-btn" onclick="showTab('positions')">
+        <div class="tab-icon">📦</div>
+        <div class="tab-label">Positions</div>
+    </div>
+
+    <div id="btn-activity" class="tab-btn" onclick="showTab('activity')">
+        <div class="tab-icon">📄</div>
+        <div class="tab-label">Activity</div>
+    </div>
 </div>
 
-<hr>
-
-<!-- ✅ Account Filter -->
+<!-- ✅ ACCOUNT FILTER -->
 <form method="get" id="accountForm">
     <b>Account:</b><br>
 
@@ -99,8 +158,6 @@
         </option>
         {% endfor %}
     </select>
-
-    <br><br>
 
     <button type="button" onclick="selectAll()">Select All</button>
     <button type="button" onclick="clearSelection()">Clear</button>
@@ -126,7 +183,7 @@
 <h2>Account Performance</h2>
 {% if account_performance %}
 <table>
-<tr><th>Account</th><th>P&L</th><th>Return %</th></tr>
+<tr><th>Account</th><th>P&L</th><th>%</th></tr>
 {% for acc in account_performance %}
 <tr>
 <td>{{ acc.account }}</td>
@@ -150,18 +207,19 @@ ${{ "%.2f"|format(acc.pnl) }}
 <div id="positionsTab" class="tab">
 
 <h2>Positions</h2>
+
 {% if positions %}
 <table>
 <tr>
-<th>Symbol</th><th>Shares</th><th>Price</th><th>Avg Cost</th>
-<th>Value</th><th>P&L</th><th>%</th><th>Alloc %</th>
+<th>Symbol</th><th>Shares</th><th>Price</th>
+<th>Value</th><th>P&L</th><th>%</th>
 </tr>
+
 {% for p in positions %}
 <tr>
 <td>{{ p.symbol }}</td>
 <td>{{ "%.2f"|format(p.shares) }}</td>
 <td>${{ "%.2f"|format(p.price) }}</td>
-<td>${{ "%.2f"|format(p.cost_basis) }}</td>
 <td>${{ "%.2f"|format(p.value) }}</td>
 
 <td class="{% if p.unrealized_pnl >= 0 %}positive{% else %}negative{% endif %}">
@@ -171,13 +229,11 @@ ${{ "%.2f"|format(p.unrealized_pnl) }}
 <td class="{% if p.unrealized_pct >= 0 %}positive{% else %}negative{% endif %}">
 {{ "%.2f"|format(p.unrealized_pct) }}%
 </td>
-
-<td>{{ "%.2f"|format(p.allocation_pct) }}%</td>
 </tr>
 {% endfor %}
 </table>
 {% else %}
-<p>No open positions</p>
+<p>No positions</p>
 {% endif %}
 
 <hr>
@@ -195,9 +251,8 @@ ${{ "%.2f"|format(p.unrealized_pnl) }}
 {% if transactions %}
 <table>
 <tr>
-<th>Date</th><th>Account</th><th>Symbol</th><th>Type</th>
-<th>Shares</th><th>Price</th><th>Amount</th>
-<th>P&L</th><th>%</th><th>Actions</th>
+<th>Date</th><th>Account</th><th>Symbol</th>
+<th>Type</th><th>Amount</th><th>P&L</th>
 </tr>
 
 {% for t in transactions %}
@@ -206,21 +261,10 @@ ${{ "%.2f"|format(p.unrealized_pnl) }}
 <td>{{ t.account }}</td>
 <td>{{ t.symbol }}</td>
 <td>{{ t.type }}</td>
-<td>{{ "%.2f"|format(t.shares) }}</td>
-<td>${{ "%.2f"|format(t.price) }}</td>
 <td>${{ "%.2f"|format(t.trade_amount) }}</td>
 
 <td class="{% if t.realized_pnl >= 0 %}positive{% else %}negative{% endif %}">
 ${{ "%.2f"|format(t.realized_pnl) }}
-</td>
-
-<td class="{% if t.realized_pct >= 0 %}positive{% else %}negative{% endif %}">
-{{ "%.2f"|format(t.realized_pct) }}%
-</td>
-
-<td>
-<a href="/edit/{{ t.id }}">Edit</a> |
-<a href="/delete/{{ t.id }}">Delete</a>
 </td>
 </tr>
 {% endfor %}
@@ -235,7 +279,7 @@ ${{ "%.2f"|format(t.realized_pnl) }}
 
 {% if cash_flows %}
 <table>
-<tr><th>Date</th><th>Account</th><th>Amount</th><th>Description</th></tr>
+<tr><th>Date</th><th>Account</th><th>Amount</th></tr>
 {% for c in cash_flows %}
 <tr>
 <td>{{ c.date.strftime('%Y-%m-%d') if c.date else '' }}</td>
@@ -243,7 +287,6 @@ ${{ "%.2f"|format(t.realized_pnl) }}
 <td class="{% if c.amount >= 0 %}positive{% else %}negative{% endif %}">
 ${{ "%.2f"|format(c.amount) }}
 </td>
-<td>{{ c.description }}</td>
 </tr>
 {% endfor %}
 </table>
@@ -269,7 +312,6 @@ function showTab(tab) {
     localStorage.setItem("activeTab", tab);
 }
 
-// ✅ account helpers
 function selectAll() {
     let s = document.getElementById("accountSelect");
     for (let i = 0; i < s.options.length; i++) s.options[i].selected = true;
@@ -305,7 +347,6 @@ function updateTags() {
     }
 }
 
-// ✅ init
 window.onload = function() {
     updateTags();
     let tab = localStorage.getItem("activeTab") || "dashboard";
