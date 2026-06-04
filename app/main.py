@@ -280,12 +280,20 @@ def compute_metrics(trades, cash):
 
     contributions = cash["amount"].sum() if not cash.empty else 0
 
-    trades["cf"] = trades.apply(
-        lambda x: -x["shares"] * x["price"] - x["fees"]
-        if x["type"] == "BUY"
-        else x["shares"] * x["price"] - x["fees"],
-        axis=1
-    )
+def calculate_cash_flow(row):
+    if row["type"] == "BUY":
+        return -row["shares"] * row["price"] - row["fees"]
+    elif row["type"] == "SELL":
+        return row["shares"] * row["price"] - row["fees"]
+    elif row["type"] == "DIVIDEND":
+        return row["price"]
+    elif row["type"] == "CONTRIBUTION":
+        return row["price"]
+    elif row["type"] == "WITHDRAWAL":
+        return -row["price"]
+    return 0
+
+    trades["cf"] = trades.apply(calculate_cash_flow, axis=1)
 
     cash_balance = contributions + trades["cf"].sum()
     realized_pnl = trades["realized_pnl"].sum()
@@ -474,6 +482,67 @@ def equity_chart(trades, cash, period="1Y"):
 
     return fig.to_html(full_html=False)
 
+def performance_analytics(trades, cash, period="90D"):
+    if trades.empty and cash.empty:
+        return {}
+
+    today = pd.Timestamp.today()
+
+    # ✅ timeframe selection
+    if period == "30D":
+        start = today - pd.Timedelta(days=30)
+    elif period == "60D":
+        start = today - pd.Timedelta(days=60)
+    elif period == "90D":
+        start = today - pd.Timedelta(days=90)
+    elif period == "Q":
+        start = today - pd.DateOffset(months=3)
+    elif period == "Y":
+        start = today - pd.DateOffset(years=1)
+    else:
+        start = today - pd.Timedelta(days=90)
+
+    trades = trades[trades["date"] >= start]
+    cash = cash[cash["date"] >= start]
+
+    # ✅ DIVIDENDS
+    dividends = trades[trades["type"] == "DIVIDEND"]
+    monthly_div = dividends.groupby(dividends["date"].dt.to_period("M"))["price"].sum()
+    yearly_div = dividends.groupby(dividends["date"].dt.to_period("Y"))["price"].sum()
+
+    # ✅ CONTRIBUTIONS
+    contrib = cash[cash["description"] == "CONTRIBUTION"]["amount"].sum()
+
+    # ✅ WITHDRAWALS
+    withdraw = abs(cash[cash["description"] == "WITHDRAWAL"]["amount"].sum())
+
+    net_contribution = contrib - withdraw
+
+    # ✅ PORTFOLIO GROWTH
+    total_pnl = trades["realized_pnl"].sum()
+
+    # ✅ TRUE RETURN (exclude cash flows)
+    invested = max(1, net_contribution)
+    true_return_pct = (total_pnl / invested) * 100 if invested != 0 else 0
+
+    df = pd.DataFrame({
+    "Metric": ["Contributions", "Growth", "Dividends"],
+    "Value": [net_contribution, total_pnl, dividends["price"].sum()]
+    })
+
+fig = px.bar(df, x="Metric", y="Value", title="Growth vs Contributions")
+chart_html = fig.to_html(full_html=False)
+
+return {
+    "monthly_dividends": monthly_div.to_dict(),
+    "yearly_dividends": yearly_div.to_dict(),
+    "net_contributions": round(net_contribution, 2),
+    "total_pnl": round(total_pnl, 2),
+    "true_return_pct": round(true_return_pct, 2)
+    "chart": chart_html   # ✅ ADD THIS LINE
+    }
+
+
 
 # ---------------------------
 # ROUTES
@@ -508,7 +577,11 @@ def index():
     chart = equity_chart(trades, cash, period="1Y")
     positions = compute_positions(trades)
     account_perf = account_performance(trades, cash) # ✅ Account Performance update
- 
+    
+    # analytics function
+    period = request.args.get("period", "90D")
+    analytics = performance_analytics(trades, cash, period)
+
 
     # ✅ allocation chart (with cash)    
     alloc_chart = allocation_chart(positions, metrics["total_cash"])
@@ -525,6 +598,7 @@ def index():
         selected_account=selected_accounts,
         account_performance=account_perf,
         equity_chart=chart,
+        analytics=analytics,
         selected_period=period,
         **metrics
     )
@@ -591,6 +665,7 @@ def rename_account():
 @app.route("/add_trade", methods=["POST"])
 def add_trade():
     conn = get_db_connection()
+
     conn.execute("""
     INSERT INTO transactions(account,date,symbol,type,shares,price,fees,lot_id)
     VALUES(?,?,?,?,?,?,?,?)
@@ -602,8 +677,9 @@ def add_trade():
         safe_float(request.form["shares"]),
         safe_float(request.form["price"]),
         safe_float(request.form["fees"]),
-        int(request.form.get("lot", 0))
+        0
     ))
+
     conn.commit()
     conn.close()
     return redirect("/")
@@ -611,17 +687,48 @@ def add_trade():
 @app.route("/add_cash", methods=["POST"])
 def add_cash():
     conn = get_db_connection()
+
+    account = request.form["account"]
+    date = request.form["date"]
+    amount = safe_float(request.form["amount"])
+    txn_type = request.form.get("type")
+    symbol = request.form.get("symbol", "")
+
+    # ✅ normalize sign
+    if txn_type == "WITHDRAWAL":
+        signed_amount = -amount
+    else:
+        signed_amount = amount
+
+    # ✅ INSERT INTO transactions (so Activity table works)
+    conn.execute("""
+    INSERT INTO transactions(account,date,symbol,type,shares,price,fees,lot_id)
+    VALUES(?,?,?,?,?,?,?,?)
+    """, (
+        account,
+        date,
+        symbol,
+        txn_type,
+        0,
+        amount,   # ✅ store amount in price (UI expects this)
+        0,
+        0
+    ))
+
+    # ✅ INSERT INTO cash_flows (for metrics)
     conn.execute("""
     INSERT INTO cash_flows(account,date,amount,description)
     VALUES(?,?,?,?)
     """, (
-        request.form["account"],
-        request.form["date"],
-        safe_float(request.form["amount"]),
-        request.form.get("description", "")
+        account,
+        date,
+        signed_amount,
+        txn_type
     ))
+
     conn.commit()
     conn.close()
+
     return redirect("/")
 
 @app.route("/edit/<int:id>")
@@ -660,41 +767,74 @@ def delete(id):
     conn.close()
     return redirect("/")
 
-# ---------------------------
-if __name__ == "__main__":
-    init_db()
-    app.run(debug=True)
-
     
 @app.route("/upload", methods=["POST"])
 def upload():
-    file = request.files["file"]
+    file = request.files.get("file")
 
     if not file:
         return redirect("/")
 
     try:
+        # ✅ load file
         if file.filename.endswith(".csv"):
             df = pd.read_csv(file)
         else:
             df = pd.read_excel(file)
 
+        # ✅ normalize column names
+        df.columns = df.columns.str.lower()
+
         conn = get_db_connection()
 
         for _, row in df.iterrows():
-            conn.execute("""
+
+            account = row.get("account", "Default")
+            date = row.get("date")
+            symbol = row.get("symbol") or row.get("ticker") or ""
+            action = str(row.get("type", row.get("action", "BUY"))).upper()
+
+            shares = safe_float(row.get("shares"))
+            price = safe_float(row.get("price"))
+            fees = safe_float(row.get("fees"))
+
+            # ✅ detect amount-based rows
+            amount = safe_float(row.get("amount") or row.get("value"))
+
+            # ✅ normalize actions
+            if "DIV" in action:
+                action = "DIVIDEND"
+            elif "BUY" in action:
+                action = "BUY"
+            elif "SELL" in action:
+                action = "SELL"
+            elif "DEP" in action:
+                action = "CONTRIBUTION"
+            elif "WDR" in action:
+                action = "WITHDRAWAL"
+
+            # ✅ skip empty rows safely
+            if not date:
+                continue
+
+            # ✅ insert trades
+            if action in ["BUY", "SELL"]:
+                conn.execute("""
                 INSERT INTO transactions(account,date,symbol,type,shares,price,fees,lot_id)
                 VALUES(?,?,?,?,?,?,?,?)
-            """, (
-                row.get("account",""),
-                row.get("date",""),
-                row.get("symbol",""),
-                row.get("type","BUY"),
-                safe_float(row.get("shares")),
-                safe_float(row.get("price")),
-                safe_float(row.get("fees")),
-                0
-            ))
+                """, (account, date, symbol, action, shares, price, fees, 0))
+
+            # ✅ insert cash flows
+            else:
+                conn.execute("""
+                INSERT INTO cash_flows(account,date,amount,description)
+                VALUES(?,?,?,?)
+                """, (
+                    account,
+                    date,
+                    amount if action != "WITHDRAWAL" else -amount,
+                    action
+                ))
 
         conn.commit()
         conn.close()
@@ -703,3 +843,7 @@ def upload():
         print("Upload error:", e)
 
     return redirect("/")
+# ---------------------------
+if __name__ == "__main__":
+    init_db()
+    app.run(debug=True)

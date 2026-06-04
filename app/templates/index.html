@@ -101,6 +101,92 @@ body.dark table { border-color: #444; }
     display: inline-block;
     cursor: pointer;
 }
+
+/* ✅ ✅ ADD ELITE CSS HERE (bottom of style block) */
+
+/* ✅ Row colors */
+.row-buy { background: rgba(0,200,0,0.05); }
+.row-sell { background: rgba(200,0,0,0.05); }
+.row-div { background: rgba(255,215,0,0.08); }
+.row-cash-in { background: rgba(0,150,255,0.08); }
+.row-cash-out { background: rgba(255,100,0,0.08); }
+
+/* ✅ Hover effect */
+tbody tr:hover {
+    background: rgba(0,0,0,0.08);
+    transition: 0.2s;
+}
+
+/* ✅ Sticky action column */
+.actions {
+    position: sticky;
+    right: 0;
+    background: white;
+}
+
+/* ✅ Amount emphasis */
+.amount {
+    font-weight: bold;
+}
+
+/* ✅ Big trade highlight */
+.large-trade {
+    border-left: 4px solid gold;
+}
+
+/* ✅ Group headers */
+.group-header {
+    background: #ddd;
+    font-weight: bold;
+    text-align: left;
+}
+
+
+/* ✅ group styling */
+.group-header {
+    background: #ddd;
+    cursor: pointer;
+}
+
+.group-total {
+    background: #f5f5f5;
+    font-weight: bold;
+}
+
+/* ✅ rows */
+.group-item:hover {
+    background: rgba(0,0,0,0.08);
+}
+
+.row-buy { background: rgba(0,200,0,0.05); }
+.row-sell { background: rgba(200,0,0,0.05); }
+.row-div { background: rgba(255,215,0,0.08); }
+.row-cash-in { background: rgba(0,150,255,0.08); }
+.row-cash-out { background: rgba(255,100,0,0.08); }
+
+/* ✅ sticky action column */
+.actions {
+    position: sticky;
+    right: 0;
+    background: white;
+}
+
+/* ✅ amount emphasis */
+.amount {
+    font-weight: bold;
+}
+
+/* ✅ filters */
+.filter-bar {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.filter-bar button {
+    border-radius: 20px;
+}
+
 </style>
 </head>
 
@@ -230,9 +316,56 @@ ${{ "%.2f"|format(total_pnl) }}
 <p>No account data</p>
 {% endif %}
 
+<h2>Performance Analytics</h2>
+
+<form method="get">
+<select name="period" onchange="this.form.submit()">
+<option value="30D" {% if selected_period=='30D' %}selected{% endif %}>30 Days</option>
+<option value="60D" {% if selected_period=='60D' %}selected{% endif %}>60 Days</option>
+<option value="90D" {% if selected_period=='90D' %}selected{% endif %}>90 Days</option>
+<option value="Q" {% if selected_period=='Q' %}selected{% endif %}>Quarter</option>
+<option value="Y" {% if selected_period=='Y' %}selected{% endif %}>Year</option>
+</select>
+</form>
 
 <h2>Balance</h2>
 {{ equity_chart|safe }}
+
+<h3>Dividend Income</h3>
+
+<b>Monthly</b>
+<ul>
+{% for k,v in analytics.monthly_dividends.items() %}
+<li>{{ k }} : ${{ "%.2f"|format(v) }}</li>
+{% endfor %}
+</ul>
+
+<b>Yearly</b>
+<ul>
+{% for k,v in analytics.yearly_dividends.items() %}
+<li>{{ k }} : ${{ "%.2f"|format(v) }}</li>
+{% endfor %}
+</ul>
+
+
+<h3>Contributions vs Growth</h3>
+
+<p>Net Contributions: ${{ analytics.net_contributions }}</p>
+
+<p class="{% if analytics.total_pnl >= 0 %}positive{% else %}negative{% endif %}">
+Portfolio Growth: ${{ analytics.total_pnl }}
+</p>
+
+<h3>Growth vs Contributions</h3>
+<div>
+    {{ analytics.chart|safe }}
+</div>
+
+<h3>True Return (Excluding Deposits)</h3>
+
+<p class="{% if analytics.true_return_pct >= 0 %}positive{% else %}negative{% endif %}">
+{{ analytics.true_return_pct }}%
+</p>
 
 </div>
 
@@ -286,10 +419,11 @@ ${{ "%.2f"|format(p.unrealized_pnl) }}
 
 </div>
 
-<!-- ✅ ACTIVITY -->
+<!-- ✅ ACTIVITY -->					 
 <div id="activityTab" class="tab">
 
-    <h3>Add Transaction</h3>
+<!-- ✅ KEEP: Add Activity -->
+<h3>Add Activity</h3>
 
 <form method="POST" action="/add_trade">
 
@@ -301,39 +435,90 @@ ${{ "%.2f"|format(p.unrealized_pnl) }}
 
 <input type="date" name="date" required>
 
-<input type="text" name="stock" placeholder="Symbol" required>
+<input type="text" name="stock" placeholder="Symbol (optional for cash)">
 
-<select name="action">
-<option value="BUY">BUY</option>
-<option value="SELL">SELL</option>
+<select name="action" id="actionSelect" onchange="toggleFields()">
+    <option value="BUY">BUY</option>
+    <option value="SELL">SELL</option>
+    <option value="DIVIDEND">DIVIDEND</option>
+    <option value="CONTRIBUTION">CONTRIBUTION</option>
+    <option value="WITHDRAWAL">WITHDRAWAL</option>
 </select>
 
-<input type="number" step="0.01" name="shares" placeholder="Shares">
-<input type="number" step="0.01" name="price" placeholder="Price">
+<div id="tradeFields">
+    <input type="number" step="0.01" name="shares" placeholder="Shares">
+    <input type="number" step="0.01" name="price" placeholder="Price">
+</div>
+
 <input type="number" step="0.01" name="fees" placeholder="Fees">
+
+<input type="number" step="0.01" name="amount" placeholder="Amount (for cash/dividend)">
 
 <button type="submit">Add</button>
 
 </form>
 
-<h3>Upload Transactions (CSV / Excel)</h3>
+<h3>Add Cash Transaction</h3>
 
+<form method="POST" action="/add_cash">
+
+<select name="account" required>
+{% for acc in accounts %}
+<option value="{{ acc }}">{{ acc }}</option>
+{% endfor %}
+</select>
+
+<input type="date" name="date" required>
+
+<select name="type" required>
+<option value="CONTRIBUTION">➕ Contribution</option>
+<option value="DIVIDEND">💰 Dividend</option>
+<option value="WITHDRAWAL">➖ Withdrawal</option>
+</select>
+
+<input type="number" step="0.01" name="amount" placeholder="Amount" required>
+
+<input type="text" name="symbol" placeholder="Symbol (optional for dividend)">
+
+<button type="submit">Add Cash</button>
+
+</form>
+										  
+
+<!-- ✅ KEEP: Upload -->
+<h3>Upload Transactions</h3>
 <form method="POST" action="/upload" enctype="multipart/form-data">
-    <input type="file" name="file" accept=".csv,.xlsx" required>
+   <input type="file" name="file" accept=".csv,.xlsx" required>
     <button type="submit">Upload</button>
 </form>
 
+
+<!-- ✅ FILTER + SEARCH -->
 <input id="searchBox" placeholder="Search..." onkeyup="filterTable()">
 
-<div class="table-container">
-
-<button onclick="groupBySymbol()">Group by Symbol</button>
-
+<div class="filter-bar">
 <button onclick="filterType('ALL')">All</button>
+<button onclick="filterType('BUY')">🟢 Buy</button>
+<button onclick="filterType('SELL')">🔴 Sell</button>
+<button onclick="filterType('DIVIDEND')">💰 Div</button>
+<button onclick="filterType('CONTRIBUTION')">➕ Add</button>
+<button onclick="filterType('WITHDRAWAL')">➖ Withdraw</button>
+</div>
+
+														  
+
+<!-- ✅ SUMMARY -->
+<h3>Total Realized P&L:
+<span class="{% if total_pnl >= 0 %}positive{% else %}negative{% endif %}">
+    ${{ "%.2f"|format(total_pnl) }}
+</span>
+</h3>
+
+
+<div class="table-container">
 <button onclick="filterType('BUY')">Buy</button>
 <button onclick="filterType('SELL')">Sell</button>
 <button onclick="filterType('DIVIDEND')">Dividend</button>
-
 <table>
 
 <thead>
@@ -343,33 +528,122 @@ ${{ "%.2f"|format(p.unrealized_pnl) }}
 <th onclick="sortTable(this,2)">Symbol</th>
 <th onclick="sortTable(this,3)">Type</th>
 <th onclick="sortTable(this,4)">Amount</th>
-<th onclick="sortTable(this,5)">P&L</th>
+<th onclick="sortTable(this,5)">Net Flow</th>
+<th onclick="sortTable(this,6)">P&L</th>
+<th onclick="sortTable(this,7)">Balance</th>
+<th>Actions</th>
 </tr>
 </thead>
 
 <tbody>
-{% for t in transactions %}
-<tr>
-<td data-date="{{ t.date.strftime('%Y-%m-%d') if t.date else '' }}">
+
+{% set current_symbol = None %}
+{% set symbol_total = 0 %}
+{% set running_balance = 0 %}
+
+{% for t in transactions|sort(attribute='symbol') %}
+    <!-- ✅ New group header when symbol changes -->
+
+    {% if t.symbol != current_symbol %}
+
+    {% if current_symbol is not none %}
+    <tr class="group-total">
+        <td colspan="9">Total ({{ current_symbol }}): 
+        ${{ "%.2f"|format(symbol_total) }}</td>
+    </tr>
+									   
+    {% endif %}
+
+    <tr class="group-header" onclick="toggleGroup(this)">
+        <td colspan="9"><b>{{ t.symbol if t.symbol else 'Cash Activity' }}</b></td>
+    </tr>
+														  
+<tr class="
+    {% if t.type == 'BUY' %}row-buy
+    {% elif t.type == 'SELL' %}row-sell
+    {% if t.trade_amount > 500000 %}large-trade{% endif %}
+    {% elif t.type == 'DIVIDEND' %}row-div
+    {% elif t.type == 'CONTRIBUTION' %}row-cash-in
+    {% elif t.type == 'WITHDRAWAL' %}row-cash-out
+    {% endif %}
+">
+
+    <td data-date="{{ t.date.strftime('%Y-%m-%d') if t.date else '' }}">
+        {{ t.date.strftime('%Y-%m-%d') if t.date else '' }}
+    </td>
+
+    <td>{{ t.account }}</td>
+
+    <td><b>{{ t.symbol }}</b></td>
+
+    										  
+{% set current_symbol = t.symbol %}
+{% set symbol_total = 0 %}
+{% endif %}
+
+{% set amount = t.price if t.type in ['DIVIDEND','CONTRIBUTION','WITHDRAWAL'] else t.trade_amount %}
+		
+{% if t.type == 'BUY' %}
+    {% set net = -amount %}
+{% elif t.type == 'SELL' %}
+    {% set net = amount %}
+{% elif t.type == 'WITHDRAWAL' %}
+    {% set net = -amount %}
+{% else %}
+    {% set net = amount %}
+						  
+{% endif %}
+
+{% set running_balance = running_balance + net %}
+{% set symbol_total = symbol_total + net %}
+
+<tr class="group-item">
+    <td data-date="{{ t.date.strftime('%Y-%m-%d') if t.date else '' }}">
     {{ t.date.strftime('%Y-%m-%d') if t.date else '' }}
-</td>
-<td>{{ t.account }}</td>
-<td>{{ t.symbol }}</td>
-<td>{{ t.type }}</td>
-<td>${{ "%.2f"|format(t.trade_amount) }}</td>
-<td class="{% if t.realized_pnl >= 0 %}positive{% else %}negative{% endif %}">
-    ${{ "%.2f"|format(t.realized_pnl) }}
-</td>
+    </td>
+
+    <td>{{ t.account }}</td>
+
+    <td><b>{{ t.symbol }}</b></td>
+
+    <td>
+    {% if t.type == 'BUY' %}🟢 Buy
+    {% elif t.type == 'SELL' %}🔴 Sell
+    {% elif t.type == 'DIVIDEND' %}💰 Dividend
+    {% elif t.type == 'CONTRIBUTION' %}➕ Contribution
+    {% elif t.type == 'WITHDRAWAL' %}➖ Withdrawal
+    {% endif %}
+    </td>
+
+<td class="amount">${{ "%.2f"|format(amount) }}</td>
 
 <td>
-<a href="/edit/{{ t.id }}">Edit</a> |
-<a href="/delete/{{ t.id }}">Delete</a>
+<span class="{% if net >= 0 %}positive{% else %}negative{% endif %}">
+{{ "+" if net >= 0 else "-" }}${{ "%.2f"|format(net|abs) }}
+</span>
+</td>
+
+<td class="{% if t.realized_pnl >= 0 %}positive{% else %}negative{% endif %}">
+${{ "%.2f"|format(t.realized_pnl) }}
+</td>
+
+<td>${{ "%.2f"|format(running_balance) }}</td>
+
+<td class="actions">
+<a href="/edit/{{ t.id }}">✏️</a>
+<a href="/delete/{{ t.id }}">🗑️</a>
 </td>
 
 </tr>
-{% endfor %}
-</tbody>
 
+{% endfor %}
+		
+
+<tr class="group-total">
+<td colspan="9"><b>Final Balance: ${{ "%.2f"|format(running_balance) }}</b></td>
+</tr>
+
+</tbody>
 </table>
 </div>
 
@@ -389,6 +663,18 @@ localStorage.setItem("tab",tab);
 }
 
 let lastSortCol = null;
+
+
+function toggleFields(){
+    let type = document.getElementById("actionSelect").value;
+    let tradeFields = document.getElementById("tradeFields");
+
+    if(type === "BUY" || type === "SELL"){
+        tradeFields.style.display = "block";
+    } else {
+        tradeFields.style.display = "none";
+    }
+}
 
 function sortTable(header, i){
     let table = header.closest("table");
@@ -488,6 +774,15 @@ window.onload=()=>{
     if(localStorage.getItem("dark")==="true")
         document.body.classList.add("dark");
 };
+
+function toggleGroup(header){
+    let row = header.nextElementSibling;
+
+    while(row && !row.classList.contains("group-header")){
+        row.style.display = row.style.display === "none" ? "" : "none";
+        row = row.nextElementSibling;
+    }
+}
 
 </script>
 
