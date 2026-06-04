@@ -664,3 +664,42 @@ def delete(id):
 if __name__ == "__main__":
     init_db()
     app.run(debug=True)
+
+    
+@app.route("/upload", methods=["POST"])
+def upload():
+    file = request.files["file"]
+
+    if not file:
+        return redirect("/")
+
+    try:
+        if file.filename.endswith(".csv"):
+            df = pd.read_csv(file)
+        else:
+            df = pd.read_excel(file)
+
+        conn = get_db_connection()
+
+        for _, row in df.iterrows():
+            conn.execute("""
+                INSERT INTO transactions(account,date,symbol,type,shares,price,fees,lot_id)
+                VALUES(?,?,?,?,?,?,?,?)
+            """, (
+                row.get("account",""),
+                row.get("date",""),
+                row.get("symbol",""),
+                row.get("type","BUY"),
+                safe_float(row.get("shares")),
+                safe_float(row.get("price")),
+                safe_float(row.get("fees")),
+                0
+            ))
+
+        conn.commit()
+        conn.close()
+
+    except Exception as e:
+        print("Upload error:", e)
+
+    return redirect("/")

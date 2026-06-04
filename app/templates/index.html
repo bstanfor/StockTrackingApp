@@ -289,6 +289,40 @@ ${{ "%.2f"|format(p.unrealized_pnl) }}
 <!-- ✅ ACTIVITY -->
 <div id="activityTab" class="tab">
 
+    <h3>Add Transaction</h3>
+
+<form method="POST" action="/add_trade">
+
+<select name="account" required>
+{% for acc in accounts %}
+<option value="{{ acc }}">{{ acc }}</option>
+{% endfor %}
+</select>
+
+<input type="date" name="date" required>
+
+<input type="text" name="stock" placeholder="Symbol" required>
+
+<select name="action">
+<option value="BUY">BUY</option>
+<option value="SELL">SELL</option>
+</select>
+
+<input type="number" step="0.01" name="shares" placeholder="Shares">
+<input type="number" step="0.01" name="price" placeholder="Price">
+<input type="number" step="0.01" name="fees" placeholder="Fees">
+
+<button type="submit">Add</button>
+
+</form>
+
+<h3>Upload Transactions (CSV / Excel)</h3>
+
+<form method="POST" action="/upload" enctype="multipart/form-data">
+    <input type="file" name="file" accept=".csv,.xlsx" required>
+    <button type="submit">Upload</button>
+</form>
+
 <input id="searchBox" placeholder="Search..." onkeyup="filterTable()">
 
 <div class="table-container">
@@ -323,7 +357,15 @@ ${{ "%.2f"|format(p.unrealized_pnl) }}
 <td>{{ t.symbol }}</td>
 <td>{{ t.type }}</td>
 <td>${{ "%.2f"|format(t.trade_amount) }}</td>
-<td>${{ "%.2f"|format(t.realized_pnl) }}</td>
+<td class="{% if t.realized_pnl >= 0 %}positive{% else %}negative{% endif %}">
+    ${{ "%.2f"|format(t.realized_pnl) }}
+</td>
+
+<td>
+<a href="/edit/{{ t.id }}">Edit</a> |
+<a href="/delete/{{ t.id }}">Delete</a>
+</td>
+
 </tr>
 {% endfor %}
 </tbody>
