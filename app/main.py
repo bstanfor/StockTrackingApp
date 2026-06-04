@@ -529,6 +529,16 @@ def index():
         **metrics
     )
 
+@app.route("/price/<symbol>")
+def get_price(symbol):
+    try:
+        price = yf.Ticker(symbol).history(period="1d")["Close"].iloc[-1]
+    except:
+        price = 0
+
+    return {"price": float(price)}
+
+
 @app.route("/delete_account/<name>")
 def delete_account(name):
     conn = get_db_connection()

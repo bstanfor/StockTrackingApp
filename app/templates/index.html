@@ -2,166 +2,138 @@
 <html>
 <head>
     <title>Portfolio Dashboard</title>
-
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
-    <style>
-        body {
-            font-family: Arial;
-            margin: 15px;
-        }
+<style>
+body { font-family: Arial; margin: 15px; }
 
-        h1 { margin-bottom: 10px; }
+/* ✅ Sticky header */
+.header {
+    position: sticky;
+    top: 0;
+    background: white;
+    z-index: 1000;
+}
 
-        table {
-            border-collapse: collapse;
-            width: 100%;
-            margin-top: 10px;
-            font-size: 14px;
-        }
+/* ✅ Tabs */
+.tab-bar {
+    display: flex;
+    justify-content: space-around;
+    border-bottom: 2px solid #ddd;
+}
 
-        th, td {
-            border: 1px solid #ddd;
-            padding: 8px;
-            text-align: center;
-        }
+.tab-btn {
+    flex: 1;
+    padding: 10px;
+    text-align: center;
+    cursor: pointer;
+    color: black;
+}
 
-        th { background-color: #f2f2f2; }
+.tab-btn.active {
+    border-bottom: 3px solid #007bff;
+    color: #007bff;
+    font-weight: bold;
+}
 
-        .positive { color: green; font-weight: bold; }
-        .negative { color: red; font-weight: bold; }
+/* ✅ Tables */
+.table-container {
+    max-height: 400px;
+    overflow-y: auto;
+    border: 1px solid #ddd;
+}
 
-        /* ✅ MODERN TAB BAR */
-        .tab-bar {
-            display: flex;
-            justify-content: space-around;
-            border-bottom: 2px solid #ddd;
-            margin-bottom: 15px;
-        }
+table {
+    border-collapse: collapse;
+    width: 100%;
+}
 
-        .tab-btn {
-            flex: 1;
-            padding: 12px;
-            text-align: center;
-            cursor: pointer;
-            background: white;
-            border: none;
-            border-bottom: 3px solid transparent;
-            font-size: 15px;
-            color: black; /* ✅ FIXED TEXT VISIBILITY */
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 4px;
-        }
+thead th {
+    position: sticky;
+    top: 0;
+    background: #f2f2f2;
+    z-index: 10;
+}
 
-        .tab-btn:hover {
-            background: #f5f5f5;
-        }
+th, td {
+    border: 1px solid #ddd;
+    padding: 8px;
+    text-align: center;
+}
 
-        .tab-btn.active {
-            border-bottom: 3px solid #007bff;
-            font-weight: bold;
-            color: #007bff;
-        }
+th {
+    cursor: pointer;
+}
 
-        /* ✅ responsive icon + text */
-        .tab-icon {
-            font-size: 18px;
-        }
+th:hover {
+    background: #ddd;
+}
 
-        .tab-label {
-            font-size: 12px;
-        }
+/* ✅ sorting arrows */
+.sort-indicator {
+    margin-left: 6px;
+    font-size: 12px;
+}
 
-        .tab {
-            display: none;
-            animation: fadeIn 0.2s ease-in;
-        }
+th.asc .sort-indicator::after { content: "▲"; }
+th.desc .sort-indicator::after { content: "▼"; }
 
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
+.positive { color: green; }
+.negative { color: red; }
 
-        /* ✅ forms */
-        input, select {
-            padding: 6px;
-            width: 100%;
-        }
+/* ✅ Dark mode */
+body.dark {
+    background: #121212;
+    color: #eee;
+}
 
-        button {
-            padding: 8px 12px;
-            margin-top: 5px;
-            cursor: pointer;
-        }
+body.dark th { background: #222; }
+body.dark table { border-color: #444; }
 
-        /* ✅ tag pills */
-        #selectedTags span {
-            display: inline-block;
-            background: #007bff;
-            color: white;
-            padding: 5px 10px;
-            border-radius: 15px;
-            margin: 4px;
-            font-size: 12px;
-            cursor: pointer;
-        }
+.tab { display: none; }
 
-        /* ✅ mobile adjustments */
-        @media (max-width: 600px) {
-            table {
-                font-size: 12px;
-            }
-
-            .tab-label {
-                font-size: 11px;
-            }
-
-            h2 {
-                font-size: 16px;
-            }
-        }
-    </style>
+#selectedTags span {
+    background: #007bff;
+    color: white;
+    padding: 5px 10px;
+    border-radius: 12px;
+    margin: 4px;
+    display: inline-block;
+    cursor: pointer;
+}
+</style>
 </head>
 
 <body>
 
+<div class="header">
+
 <h1>📊 Portfolio Dashboard</h1>
 
-<!-- ✅ MODERN TAB BAR -->
 <div class="tab-bar">
-    <div id="btn-dashboard" class="tab-btn" onclick="showTab('dashboard')">
-        <div class="tab-icon">📊</div>
-        <div class="tab-label">Dashboard</div>
-    </div>
-
-    <div id="btn-positions" class="tab-btn" onclick="showTab('positions')">
-        <div class="tab-icon">📦</div>
-        <div class="tab-label">Positions</div>
-    </div>
-
-    <div id="btn-activity" class="tab-btn" onclick="showTab('activity')">
-        <div class="tab-icon">📄</div>
-        <div class="tab-label">Activity</div>
-    </div>
+<div id="btn-dashboard" class="tab-btn" onclick="showTab('dashboard')">📊 Dashboard</div>
+<div id="btn-positions" class="tab-btn" onclick="showTab('positions')">📦 Positions</div>
+<div id="btn-activity" class="tab-btn" onclick="showTab('activity')">📄 Activity</div>
 </div>
 
-<!-- ✅ ACCOUNT FILTER -->
+</div>
+
+<!-- ✅ Dark mode -->
+<button onclick="toggleDarkMode()">🌙 Dark Mode</button>
+
+<!-- ✅ Filters -->
 <form method="get" id="accountForm">
-    <b>Account:</b><br>
+<select id="accountSelect" name="account" multiple size="4">
+{% for acc in accounts %}
+<option value="{{ acc }}" {% if acc in selected_account %}selected{% endif %}>
+{{ acc }}
+</option>
+{% endfor %}
+</select>
 
-    <select id="accountSelect" name="account" multiple size="5">
-        {% for acc in accounts %}
-        <option value="{{ acc }}" {% if acc in selected_account %}selected{% endif %}>
-            {{ acc }}
-        </option>
-        {% endfor %}
-    </select>
-
-    <button type="button" onclick="selectAll()">Select All</button>
-    <button type="button" onclick="clearSelection()">Clear</button>
-    <button type="submit">Apply</button>
+<button type="button" onclick="selectAll()">Select All</button>
+<button type="button" onclick="clearSelection()">Clear</button>
+<button type="submit">Apply</button>
 </form>
 
 <div id="selectedTags"></div>
@@ -171,35 +143,96 @@
 <!-- ✅ DASHBOARD -->
 <div id="dashboardTab" class="tab">
 
-<h2>Total Portfolio Value</h2>
-<div style="font-size:28px; font-weight:bold;">
-    ${{ "%.2f"|format(portfolio_value) }}
-</div>
+<h2>Portfolio Value</h2>
+<h1>${{ "%.2f"|format(portfolio_value) }}</h1>
 
 <div class="{% if total_pnl >= 0 %}positive{% else %}negative{% endif %}">
-    ${{ "%.2f"|format(total_pnl) }}
+${{ "%.2f"|format(total_pnl) }}
 </div>
 
+
 <h2>Account Performance</h2>
+
 {% if account_performance %}
+
+<div class="table-container">
+
 <table>
-<tr><th>Account</th><th>P&L</th><th>%</th></tr>
-{% for acc in account_performance %}
+
+<thead>
 <tr>
-<td>{{ acc.account }}</td>
-<td class="{% if acc.pnl >= 0 %}positive{% else %}negative{% endif %}">
-${{ "%.2f"|format(acc.pnl) }}
-</td>
-<td class="{% if acc.pct >= 0 %}positive{% else %}negative{% endif %}">
-{{ "%.2f"|format(acc.pct) }}%
-</td>
+    <th onclick="sortTable(this,0)">
+        Account <span class="sort-indicator"></span>
+    </th>
+
+    <th onclick="sortTable(this,1)">
+        P&L <span class="sort-indicator"></span>
+    </th>
+
+    <th onclick="sortTable(this,2)">
+        Return % <span class="sort-indicator"></span>
+    </th>
+</tr>
+</thead>
+
+<tbody>
+
+{% for acc in account_performance|sort(attribute='pct', reverse=True) %}
+<tr>
+
+    <!-- ✅ Account -->
+    <td>
+        {{ loop.index }}. {{ acc.account }}
+    </td>
+
+    <!-- ✅ P&L -->
+    <td class="{% if acc.pnl >= 0 %}positive{% else %}negative{% endif %}">
+        ${{ "%.2f"|format(acc.pnl) }}
+    </td>
+
+    <!-- ✅ Return % + Bar -->
+    <td>
+
+        <div class="{% if acc.pct >= 0 %}positive{% else %}negative{% endif %}">
+            {{ "%.2f"|format(acc.pct) }}%
+        </div>
+
+        <div style="
+            background:#eee;
+            width:100%;
+            height:6px;
+            border-radius:4px;
+            margin-top:4px;
+        ">
+
+            <div style="
+                width: {{ acc.pct if acc.pct > 0 else 0 }}%;
+                height:6px;
+                border-radius:4px;
+                background: {% if acc.pct >= 0 %}green{% else %}red{% endif %};
+            ">
+            </div>
+
+        </div>
+
+    </td>
+
 </tr>
 {% endfor %}
+
+</tbody>
+
 </table>
+
+</div>
+
+{% else %}
+<p>No account data</p>
 {% endif %}
 
-<h2>Portfolio Balance</h2>
-<div>{{ equity_chart|safe }}</div>
+
+<h2>Balance</h2>
+{{ equity_chart|safe }}
 
 </div>
 
@@ -208,150 +241,212 @@ ${{ "%.2f"|format(acc.pnl) }}
 
 <h2>Positions</h2>
 
-{% if positions %}
+<div class="table-container">
 <table>
-<tr>
-<th>Symbol</th><th>Shares</th><th>Price</th>
-<th>Value</th><th>P&L</th><th>%</th>
-</tr>
 
+<thead>
+<tr>
+<th onclick="sortTable(this,0)">Symbol<span class="sort-indicator"></span></th>
+<th onclick="sortTable(this,1)">Shares<span class="sort-indicator"></span></th>
+<th onclick="sortTable(this,2)">Price<span class="sort-indicator"></span></th>
+<th onclick="sortTable(this,3)">Value<span class="sort-indicator"></span></th>
+<th onclick="sortTable(this,4)">P&L<span class="sort-indicator"></span></th>
+<th onclick="sortTable(this,5)">%<span class="sort-indicator"></span></th>
+</tr>
+</thead>
+
+<tbody>
 {% for p in positions %}
 <tr>
 <td>{{ p.symbol }}</td>
 <td>{{ "%.2f"|format(p.shares) }}</td>
-<td>${{ "%.2f"|format(p.price) }}</td>
+
+<td class="price" data-symbol="{{ p.symbol }}">
+${{ "%.2f"|format(p.price) }}
+</td>
+
 <td>${{ "%.2f"|format(p.value) }}</td>
 
 <td class="{% if p.unrealized_pnl >= 0 %}positive{% else %}negative{% endif %}">
 ${{ "%.2f"|format(p.unrealized_pnl) }}
 </td>
 
-<td class="{% if p.unrealized_pct >= 0 %}positive{% else %}negative{% endif %}">
-{{ "%.2f"|format(p.unrealized_pct) }}%
-</td>
+<td>{{ "%.2f"|format(p.unrealized_pct) }}%</td>
 </tr>
 {% endfor %}
+</tbody>
+
 </table>
-{% else %}
-<p>No positions</p>
-{% endif %}
+</div>
 
 <hr>
 
-<h2>Portfolio Allocation</h2>
-<div>{{ allocation_chart|safe }}</div>
+<h2>Allocation</h2>
+{{ allocation_chart|safe }}
 
 </div>
 
 <!-- ✅ ACTIVITY -->
 <div id="activityTab" class="tab">
 
-<h2>Transactions</h2>
+<input id="searchBox" placeholder="Search..." onkeyup="filterTable()">
 
-{% if transactions %}
+<div class="table-container">
+
+<button onclick="groupBySymbol()">Group by Symbol</button>
+
+<button onclick="filterType('ALL')">All</button>
+<button onclick="filterType('BUY')">Buy</button>
+<button onclick="filterType('SELL')">Sell</button>
+<button onclick="filterType('DIVIDEND')">Dividend</button>
+
 <table>
-<tr>
-<th>Date</th><th>Account</th><th>Symbol</th>
-<th>Type</th><th>Amount</th><th>P&L</th>
-</tr>
 
+<thead>
+<tr>
+<th onclick="sortTable(this,0)">Date</th>
+<th onclick="sortTable(this,1)">Account</th>
+<th onclick="sortTable(this,2)">Symbol</th>
+<th onclick="sortTable(this,3)">Type</th>
+<th onclick="sortTable(this,4)">Amount</th>
+<th onclick="sortTable(this,5)">P&L</th>
+</tr>
+</thead>
+
+<tbody>
 {% for t in transactions %}
 <tr>
-<td>{{ t.date.strftime('%Y-%m-%d') if t.date else '' }}</td>
+<td data-date="{{ t.date.strftime('%Y-%m-%d') if t.date else '' }}">
+    {{ t.date.strftime('%Y-%m-%d') if t.date else '' }}
+</td>
 <td>{{ t.account }}</td>
 <td>{{ t.symbol }}</td>
 <td>{{ t.type }}</td>
 <td>${{ "%.2f"|format(t.trade_amount) }}</td>
-
-<td class="{% if t.realized_pnl >= 0 %}positive{% else %}negative{% endif %}">
-${{ "%.2f"|format(t.realized_pnl) }}
-</td>
+<td>${{ "%.2f"|format(t.realized_pnl) }}</td>
 </tr>
 {% endfor %}
+</tbody>
+
 </table>
-{% else %}
-<p>No transactions</p>
-{% endif %}
-
-<hr>
-
-<h2>Cash Activity</h2>
-
-{% if cash_flows %}
-<table>
-<tr><th>Date</th><th>Account</th><th>Amount</th></tr>
-{% for c in cash_flows %}
-<tr>
-<td>{{ c.date.strftime('%Y-%m-%d') if c.date else '' }}</td>
-<td>{{ c.account }}</td>
-<td class="{% if c.amount >= 0 %}positive{% else %}negative{% endif %}">
-${{ "%.2f"|format(c.amount) }}
-</td>
-</tr>
-{% endfor %}
-</table>
-{% else %}
-<p>No cash activity</p>
-{% endif %}
+</div>
 
 </div>
 
-<!-- ✅ CLEAN JS -->
 <script>
-function showTab(tab) {
-    const tabs = ["dashboard", "positions", "activity"];
+function showTab(tab){
+["dashboard","positions","activity"].forEach(t=>{
+document.getElementById(t+"Tab").style.display="none";
+document.getElementById("btn-"+t).classList.remove("active");
+});
 
-    tabs.forEach(t => {
-        document.getElementById(t + "Tab").style.display = "none";
-        document.getElementById("btn-" + t).classList.remove("active");
+document.getElementById(tab+"Tab").style.display="block";
+document.getElementById("btn-"+tab).classList.add("active");
+
+localStorage.setItem("tab",tab);
+}
+
+let lastSortCol = null;
+
+function sortTable(header, i){
+    let table = header.closest("table");
+    let rows = [...table.tBodies[0].rows]; // ✅ safer (only tbody)
+    let asc = !header.classList.contains("asc");
+
+    table.querySelectorAll("th").forEach(th => 
+        th.classList.remove("asc","desc")
+    );
+
+    header.classList.add(asc ? "asc" : "desc");
+
+    rows.sort((a,b)=>{
+        let A = a.cells[i].dataset.date || a.cells[i].innerText.trim();
+        let B = b.cells[i].dataset.date || b.cells[i].innerText.trim();
+
+        // ✅ ✅ DATE SORT FIX (critical)
+		let dateA = Date.parse(A);
+        let dateB = Date.parse(B);
+
+        if(!isNaN(dateA) && !isNaN(dateB)){
+            if(dateA !== dateB){
+                return asc ? dateA - dateB : dateB - dateA;
+            }
+
+            // ✅ secondary sort by amount
+            let amtA = parseFloat(a.cells[4].innerText.replace(/[^0-9.-]+/g,""));
+            let amtB = parseFloat(b.cells[4].innerText.replace(/[^0-9.-]+/g,""));
+
+            return asc ? amtA - amtB : amtB - amtA;
+        }
+        // ✅ numbers ($, %, commas)
+        let numA = parseFloat(A.replace(/[^0-9.-]+/g,""));
+        let numB = parseFloat(B.replace(/[^0-9.-]+/g,""));
+
+        if(!isNaN(numA) && !isNaN(numB)){
+            return asc ? numA - numB : numB - numA;
+        }
+
+        return asc ? A.localeCompare(B) : B.localeCompare(A);
     });
 
-    document.getElementById(tab + "Tab").style.display = "block";
-    document.getElementById("btn-" + tab).classList.add("active");
-
-    localStorage.setItem("activeTab", tab);
+    rows.forEach(r => table.tBodies[0].appendChild(r));
 }
 
-function selectAll() {
-    let s = document.getElementById("accountSelect");
-    for (let i = 0; i < s.options.length; i++) s.options[i].selected = true;
-    updateTags();
+function groupBySymbol(){
+    let rows = [...document.querySelectorAll("#activityTab tbody tr")];
+
+    rows.sort((a,b)=>{
+        let symA = a.cells[2].innerText;
+        let symB = b.cells[2].innerText;
+
+        if(symA !== symB) return symA.localeCompare(symB);
+
+        let dateA = Date.parse(a.cells[0].dataset.date);
+        let dateB = Date.parse(b.cells[0].dataset.date);
+
+        return dateB - dateA; // newest first inside group
+    });
+
+    let tbody = document.querySelector("#activityTab tbody");
+    rows.forEach(r => tbody.appendChild(r));
 }
 
-function clearSelection() {
-    let s = document.getElementById("accountSelect");
-    for (let i = 0; i < s.options.length; i++) s.options[i].selected = false;
-    updateTags();
+function filterTable(){
+let input=document.getElementById("searchBox").value.toLowerCase();
+document.querySelectorAll("#activityTab tbody tr").forEach(r=>{
+r.style.display=r.innerText.toLowerCase().includes(input)? "":"none";
+});
 }
 
-function updateTags() {
-    let select = document.getElementById("accountSelect");
-    let container = document.getElementById("selectedTags");
-    container.innerHTML = "";
+async function refreshPrices(){
+let cells=document.querySelectorAll(".price");
+for(let c of cells){
+let r=await fetch(`/price/${c.dataset.symbol}`);
+let d=await r.json();
+c.innerText="$"+d.price.toFixed(2);
+}
+}
+setInterval(refreshPrices,30000);
 
-    for (let i = 0; i < select.options.length; i++) {
-        if (select.options[i].selected) {
-            let val = select.options[i].value;
+function toggleDarkMode(){
+document.body.classList.toggle("dark");
+localStorage.setItem("dark",document.body.classList.contains("dark"));
+}
 
-            let tag = document.createElement("span");
-            tag.innerHTML = val + " ✕";
+window.onload=()=>{
+    showTab(localStorage.getItem("tab")||"dashboard");
 
-            tag.onclick = function() {
-                select.options[i].selected = false;
-                updateTags();
-                document.getElementById("accountForm").submit();
-            };
-
-            container.appendChild(tag);
-        }
+    // ✅ default sort by Date DESC on Activity
+    let dateHeader = document.querySelector("#activityTab th");
+    if(dateHeader) {
+        sortTable(dateHeader, 0);  // first click (asc)
+        sortTable(dateHeader, 0);  // second click (desc = newest first)
     }
-}
 
-window.onload = function() {
-    updateTags();
-    let tab = localStorage.getItem("activeTab") || "dashboard";
-    showTab(tab);
+    if(localStorage.getItem("dark")==="true")
+        document.body.classList.add("dark");
 };
+
 </script>
 
 </body>
