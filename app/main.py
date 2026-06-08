@@ -136,7 +136,7 @@ def enrich_trades(trades):
 
             pnl = pnl - row["fees"]
 
-            trades.at[i, "realized_pnl"] = pnl - row["fees"]
+            trades.at[i, "realized_pnl"] = pnl 
         
             if total_cost != 0:
                 trades.at[i, "realized_pct"] = (pnl / total_cost) * 100
@@ -268,18 +268,6 @@ def allocation_chart(positions, total_cash):
 
     return fig.to_html(full_html=False)
 
-def compute_metrics(trades, cash):
-    if trades.empty:
-        return {
-            "total_cash": 0,
-            "portfolio_value": 0,
-            "realized_pnl": 0,
-            "unrealized_pnl": 0,
-            "total_pnl": 0
-        }
-
-    contributions = cash["amount"].sum() if not cash.empty else 0
-
 def calculate_cash_flow(row):
     if row["type"] == "BUY":
         return -row["shares"] * row["price"] - row["fees"]
@@ -292,6 +280,18 @@ def calculate_cash_flow(row):
     elif row["type"] == "WITHDRAWAL":
         return -row["price"]
     return 0
+
+def compute_metrics(trades, cash):
+    if trades is None or len(trades) == 0:
+        return {
+        "total_cash": 0,
+        "portfolio_value": 0,
+        "realized_pnl": 0,
+        "unrealized_pnl": 0,
+        "total_pnl": 0
+    }
+
+    contributions = cash["amount"].sum() if cash is not None and not cash.empty else 0
 
     trades["cf"] = trades.apply(calculate_cash_flow, axis=1)
 
@@ -483,6 +483,7 @@ def equity_chart(trades, cash, period="1Y"):
     return fig.to_html(full_html=False)
 
 def performance_analytics(trades, cash, period="90D"):
+
     if trades.empty and cash.empty:
         return {}
 
@@ -505,44 +506,47 @@ def performance_analytics(trades, cash, period="90D"):
     trades = trades[trades["date"] >= start]
     cash = cash[cash["date"] >= start]
 
-    # ✅ DIVIDENDS
+    # ✅ dividends
     dividends = trades[trades["type"] == "DIVIDEND"]
-    monthly_div = dividends.groupby(dividends["date"].dt.to_period("M"))["price"].sum()
-    yearly_div = dividends.groupby(dividends["date"].dt.to_period("Y"))["price"].sum()
 
-    # ✅ CONTRIBUTIONS
-    contrib = cash[cash["description"] == "CONTRIBUTION"]["amount"].sum()
+    if not dividends.empty:
+        monthly_div = dividends.groupby(dividends["date"].dt.to_period("M"))["price"].sum()
+        yearly_div = dividends.groupby(dividends["date"].dt.to_period("Y"))["price"].sum()
+    else:
+        monthly_div = pd.Series()
+        yearly_div = pd.Series()
 
-    # ✅ WITHDRAWALS
-    withdraw = abs(cash[cash["description"] == "WITHDRAWAL"]["amount"].sum())
+    # ✅ contributions / withdrawals
+    contrib = cash[cash["description"] == "CONTRIBUTION"]["amount"].sum() if not cash.empty else 0
+    withdraw = abs(cash[cash["description"] == "WITHDRAWAL"]["amount"].sum()) if not cash.empty else 0
 
     net_contribution = contrib - withdraw
 
-    # ✅ PORTFOLIO GROWTH
-    total_pnl = trades["realized_pnl"].sum()
+    # ✅ pnl
+    total_pnl = trades["realized_pnl"].sum() if not trades.empty else 0
 
-    # ✅ TRUE RETURN (exclude cash flows)
-    invested = max(1, net_contribution)
-    true_return_pct = (total_pnl / invested) * 100 if invested != 0 else 0
+    # ✅ true return
+    invested = net_contribution if net_contribution != 0 else 1
+    true_return_pct = (total_pnl / invested) * 100
 
+    # ✅ chart
     df = pd.DataFrame({
-    "Metric": ["Contributions", "Growth", "Dividends"],
-    "Value": [net_contribution, total_pnl, dividends["price"].sum()]
+        "Metric": ["Contributions", "Growth"],
+        "Value": [net_contribution, total_pnl]
     })
 
-fig = px.bar(df, x="Metric", y="Value", title="Growth vs Contributions")
-chart_html = fig.to_html(full_html=False)
+    fig = px.bar(df, x="Metric", y="Value", title="Growth vs Contributions")
+    chart_html = fig.to_html(full_html=False)
 
-return {
-    "monthly_dividends": monthly_div.to_dict(),
-    "yearly_dividends": yearly_div.to_dict(),
-    "net_contributions": round(net_contribution, 2),
-    "total_pnl": round(total_pnl, 2),
-    "true_return_pct": round(true_return_pct, 2)
-    "chart": chart_html   # ✅ ADD THIS LINE
+    # ✅ FINAL RETURN (properly indented)
+    return {
+        "monthly_dividends": monthly_div.to_dict(),
+        "yearly_dividends": yearly_div.to_dict(),
+        "net_contributions": round(net_contribution, 2),
+        "total_pnl": round(total_pnl, 2),
+        "true_return_pct": round(true_return_pct, 2),
+        "chart": chart_html
     }
-
-
 
 # ---------------------------
 # ROUTES
