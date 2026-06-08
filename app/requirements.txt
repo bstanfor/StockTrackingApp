@@ -1,4 +1,5 @@
 flask==2.3.2
 pandas==2.0.3
 plotly==5.14.0
-yfinance--0.2.79
+yfinance==0.2.18
+multitasking==0.0.11
