@@ -485,7 +485,14 @@ def equity_chart(trades, cash, period="1Y"):
 def performance_analytics(trades, cash, period="90D"):
 
     if trades.empty and cash.empty:
-        return {}
+        return {
+            "monthly_dividends": {},
+            "yearly_dividends": {},
+            "net_contributions": 0,
+            "total_pnl": 0,
+            "true_return_pct": 0,
+            "chart": ""
+        }
 
     today = pd.Timestamp.today()
 
