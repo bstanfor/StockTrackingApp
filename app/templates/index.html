@@ -40,6 +40,7 @@ body { font-family: Arial; margin: 15px; }
 .table-container {
     max-height: 400px;
     overflow-y: auto;
+    overflow-x: auto;
     border: 1px solid #ddd;
 }
 
@@ -121,7 +122,7 @@ tbody tr:hover {
 .actions {
     position: sticky;
     right: 0;
-    background: white;
+    background: inherint;
 }
 
 /* ✅ Amount emphasis */
@@ -429,7 +430,7 @@ ${{ "%.2f"|format(p.unrealized_pnl) }}
 <!-- ✅ KEEP: Add Activity -->
 <h3>Add Activity</h3>
 
-<form method="POST" action="/add_trade"> onsubmit="return validateSell()
+<form method="POST" action="/add_trade"> onsubmit="return validateSell()">
 
 <select name="account" required>
 {% for acc in accounts %}
@@ -655,12 +656,6 @@ ${{ "%.2f"|format(p.unrealized_pnl) }}
 
 {% endfor %}
 
-</td>
-
-</tr>
-
-{% endfor %}
-
 </tbody>
 
 
@@ -838,7 +833,8 @@ function toggleGroup(header){
     }
 }
 
-async function loadLots() {async    const account = document.querySelector('[name="account"]').value;
+async function loadLots() {
+    const account = document.querySelector('[name="account"]').value;
     const symbol = document.querySelector('[name="stock"]').value;
 
     if (!account || !symbol) return;
