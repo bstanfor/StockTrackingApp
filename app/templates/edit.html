@@ -1,20 +1,36 @@
-<h2>Edit</h2>
+<h2>Edit Transaction</h2>
+
 <form method="POST" action="/update/{{ transaction.id }}">
 
+<label>Account</label>
 <input name="account" value="{{ transaction.account }}">
+
+<label>Date</label>
 <input type="date" name="date" value="{{ transaction.date }}">
+
+<label>Symbol</label>
 <input name="stock" value="{{ transaction.symbol }}">
 
+<label>Type</label>
 <select name="action">
-<option value="BUY" {% if transaction.type=="BUY" %}selected{% endif %}>BUY</option>
-<option value="SELL" {% if transaction.type=="SELL" %}selected{% endif %}>SELL</option>
+    <option value="BUY" {% if transaction.type=="BUY" %}selected{% endif %}>BUY</option>
+    <option value="SELL" {% if transaction.type=="SELL" %}selected{% endif %}>SELL</option>
 </select>
 
-<input name="shares" value="{{ transaction.shares }}">
-<input name="price" value="{{ transaction.price }}">
-<input name="fees" value="{{ transaction.fees }}">
-<input name="lot" value="{{ transaction.lot_id }}">
+<label>Shares</label>
+<input type="number" step="0.0001" name="shares" value="{{ transaction.shares }}">
 
-<button>Update</button>
+<label>Price</label>
+<input type="number" step="0.01" name="price" value="{{ transaction.price }}">
+
+<label>Fees</label>
+<input type="number" step="0.01" name="fees" value="{{ transaction.fees }}">
+
+<!-- Hidden: keep lot_id -->
+<input type="hidden" name="lot" value="{{ transaction.lot_id }}">
+
+<br><br>
+
+<button type="submit">✅ Update</button>
+
 </form>
-``

@@ -379,12 +379,16 @@ Portfolio Growth: ${{ analytics.total_pnl }}
 
 <thead>
 <tr>
-<th onclick="sortTable(this,0)">Symbol<span class="sort-indicator"></span></th>
-<th onclick="sortTable(this,1)">Shares<span class="sort-indicator"></span></th>
-<th onclick="sortTable(this,2)">Price<span class="sort-indicator"></span></th>
-<th onclick="sortTable(this,3)">Value<span class="sort-indicator"></span></th>
-<th onclick="sortTable(this,4)">P&L<span class="sort-indicator"></span></th>
-<th onclick="sortTable(this,5)">%<span class="sort-indicator"></span></th>
+<th onclick="sortTable(this,0)">Date</th>
+<th onclick="sortTable(this,1)">Account</th>
+<th onclick="sortTable(this,2)">Symbol</th>
+<th onclick="sortTable(this,3)">Type</th>
+<th onclick="sortTable(this,4)">Cash</th>
+<th onclick="sortTable(this,5)">Shares</th>
+<th onclick="sortTable(this,6)">Price</th>
+<th onclick="sortTable(this,7)">P&L</th>
+<th onclick="sortTable(this,8)">Balance</th>
+<th>Actions</th>
 </tr>
 </thead>
 
@@ -425,7 +429,7 @@ ${{ "%.2f"|format(p.unrealized_pnl) }}
 <!-- ✅ KEEP: Add Activity -->
 <h3>Add Activity</h3>
 
-<form method="POST" action="/add_trade">
+<form method="POST" action="/add_trade"> onsubmit="return validateSell()
 
 <select name="account" required>
 {% for acc in accounts %}
@@ -444,6 +448,14 @@ ${{ "%.2f"|format(p.unrealized_pnl) }}
     <option value="CONTRIBUTION">CONTRIBUTION</option>
     <option value="WITHDRAWAL">WITHDRAWAL</option>
 </select>
+
+<!-- ✅ ADD lot select -->
+<select name="lot_id" id="lotSelect" style="display:none;">
+    <option value="">Select Lot</option>
+</select>
+
+<!-- ✅  P&L preview -->
+<div id="pnlPreview" style="font-weight:bold; margin-top:5px;"></div>
 
 <div id="tradeFields">
     <input type="number" step="0.01" name="shares" placeholder="Shares">
@@ -523,127 +535,137 @@ ${{ "%.2f"|format(p.unrealized_pnl) }}
 
 <thead>
 <tr>
-<th onclick="sortTable(this,0)">Date</th>
-<th onclick="sortTable(this,1)">Account</th>
-<th onclick="sortTable(this,2)">Symbol</th>
-<th onclick="sortTable(this,3)">Type</th>
-<th onclick="sortTable(this,4)">Amount</th>
-<th onclick="sortTable(this,5)">Net Flow</th>
-<th onclick="sortTable(this,6)">P&L</th>
-<th onclick="sortTable(this,7)">Balance</th>
+<th onclick="sortTable(this,0)">Lot #</th>
+<th onclick="sortTable(this,1)">Date</th>
+<th onclick="sortTable(this,2)">Account</th>
+<th onclick="sortTable(this,3)">Symbol</th>
+<th onclick="sortTable(this,4)">Action</th>
+<th onclick="sortTable(this,5)">Shares</th>
+<th onclick="sortTable(this,6)">Price</th>
+<th onclick="sortTable(this,7)">Trade Amt</th>
+<th onclick="sortTable(this,8)">Fees</th>
+<th onclick="sortTable(this,9)">Net Cash</th>
+<th onclick="sortTable(this,10)">P&L $</th>
+<th onclick="sortTable(this,11)">P&L %</th>
+<th onclick="sortTable(this,12)">Balance</th>
 <th>Actions</th>
 </tr>
 </thead>
 
 <tbody>
 
-{% set current_symbol = None %}
-{% set symbol_total = 0 %}
-{% set running_balance = 0 %}
+{% for t in activity %}
 
-{% for t in transactions|sort(attribute='symbol') %}
-    <!-- ✅ New group header when symbol changes -->
+{% for t in activity %}
 
-    {% if t.symbol != current_symbol %}
+{# ✅ Backward compatibility: prefer action, fallback to type #}
+{% set action = t.action if t.action is defined and t.action else t.type %}
 
-    {% if current_symbol is not none %}
-    <tr class="group-total">
-        <td colspan="9">Total ({{ current_symbol }}): 
-        ${{ "%.2f"|format(symbol_total) }}</td>
-    </tr>
-									   
-    {% endif %}
+{# ✅ Safe numeric defaults #}
+{% set shares = t.shares or 0 %}
+{% set price = t.share_price or 0 %}
+{% set amount = t.trade_amount or 0 %}
+{% set fees = t.fees or 0 %}
+{% set net = t.net_cash_flow if t.net_cash_flow is not none else 0 %}
+{% set pnl = t.pl_dollar or 0 %}
+{% set pnl_pct = t.pl_percent or 0 %}
+{% set balance = t.balance or 0 %}
 
-    <tr class="group-header" onclick="toggleGroup(this)">
-        <td colspan="9"><b>{{ t.symbol if t.symbol else 'Cash Activity' }}</b></td>
-    </tr>
-														  
 <tr class="
-    {% if t.type == 'BUY' %}row-buy
-    {% elif t.type == 'SELL' %}row-sell
-    {% if t.trade_amount > 500000 %}large-trade{% endif %}
-    {% elif t.type == 'DIVIDEND' %}row-div
-    {% elif t.type == 'CONTRIBUTION' %}row-cash-in
-    {% elif t.type == 'WITHDRAWAL' %}row-cash-out
-    {% endif %}
+{% if action == 'BUY' %}row-buy
+{% elif action == 'SELL' %}row-sell
+{% elif action == 'DIVIDEND' %}row-div
+{% elif action == 'CONTRIBUTION' %}row-cash-in
+{% elif action == 'WITHDRAWAL' %}row-cash-out
+{% endif %}
 ">
 
-    <td data-date="{{ t.date.strftime('%Y-%m-%d') if t.date else '' }}">
-        {{ t.date.strftime('%Y-%m-%d') if t.date else '' }}
-    </td>
+<!-- ✅ LOT ID -->
+<td>{{ t.lot_id or "-" }}</td>
 
-    <td>{{ t.account }}</td>
-
-    <td><b>{{ t.symbol }}</b></td>
-
-    										  
-{% set current_symbol = t.symbol %}
-{% set symbol_total = 0 %}
-{% endif %}
-
-{% set amount = t.price if t.type in ['DIVIDEND','CONTRIBUTION','WITHDRAWAL'] else t.trade_amount %}
-		
-{% if t.type == 'BUY' %}
-    {% set net = -amount %}
-{% elif t.type == 'SELL' %}
-    {% set net = amount %}
-{% elif t.type == 'WITHDRAWAL' %}
-    {% set net = -amount %}
-{% else %}
-    {% set net = amount %}
-						  
-{% endif %}
-
-{% set running_balance = running_balance + net %}
-{% set symbol_total = symbol_total + net %}
-
-<tr class="group-item">
-    <td data-date="{{ t.date.strftime('%Y-%m-%d') if t.date else '' }}">
-    {{ t.date.strftime('%Y-%m-%d') if t.date else '' }}
-    </td>
-
-    <td>{{ t.account }}</td>
-
-    <td><b>{{ t.symbol }}</b></td>
-
-    <td>
-    {% if t.type == 'BUY' %}🟢 Buy
-    {% elif t.type == 'SELL' %}🔴 Sell
-    {% elif t.type == 'DIVIDEND' %}💰 Dividend
-    {% elif t.type == 'CONTRIBUTION' %}➕ Contribution
-    {% elif t.type == 'WITHDRAWAL' %}➖ Withdrawal
-    {% endif %}
-    </td>
-
-<td class="amount">${{ "%.2f"|format(amount) }}</td>
-
-<td>
-<span class="{% if net >= 0 %}positive{% else %}negative{% endif %}">
-{{ "+" if net >= 0 else "-" }}${{ "%.2f"|format(net|abs) }}
-</span>
+<!-- ✅ DATE (robust handling: datetime or string) -->
+<td data-date="{{
+  t.date.strftime('%Y-%m-%d') if t.date and t.date.strftime is defined else (t.date or '')
+}}">
+  {{
+    t.date.strftime('%Y-%m-%d') if t.date and t.date.strftime is defined else (t.date or '-')
+  }}
 </td>
 
-<td class="{% if t.realized_pnl >= 0 %}positive{% else %}negative{% endif %}">
-${{ "%.2f"|format(t.realized_pnl) }}
+<!-- ✅ ACCOUNT -->
+<td>{{ t.account or "-" }}</td>
+
+<!-- ✅ SYMBOL -->
+<td><b>{{ t.symbol or "-" }}</b></td>
+
+<!-- ✅ TYPE -->
+<td>{{ action or "-" }}</td>
+
+<!-- ✅ SHARES (preserve old behavior: always show numeric) -->
+<td>{{ "%.2f"|format(shares) }}</td>
+
+<!-- ✅ PRICE -->
+<td>${{ "%.2f"|format(price) }}</td>
+
+<!-- ✅ TRADE AMOUNT -->
+<td>${{ "%.2f"|format(amount) }}</td>
+
+<!-- ✅ FEES -->
+<td>${{ "%.2f"|format(fees) }}</td>
+
+<!-- ✅ NET CASH FLOW (safe + signed + styled) -->
+<td class="amount {% if net >= 0 %}positive{% else %}negative{% endif %}">
+  {{ "+" if net >= 0 else "-" }}${{ "%.2f"|format(net|abs) }}
+
 </td>
 
-<td>${{ "%.2f"|format(running_balance) }}</td>
+<!-- ✅ P&L $ -->
+<td class="{% if pnl >= 0 %}positive{% else %}negative{% endif %}">
+  ${{ "%.2f"|format(pnl) }}
+</td>
 
+<!-- ✅ P&L % -->
+<td class="{% if pnl_pct >= 0 %}positive{% else %}negative{% endif %}">
+  {{ "%.2f"|format(pnl_pct) }}%
+</td>
+
+<!-- ✅ RUNNING BALANCE -->
+<td>${{ "%.2f"|format(balance) }}</td>
+
+<!-- ✅ ACTIONS (backward compatible routing fallback) -->
 <td class="actions">
-<a href="/edit/{{ t.id }}">✏️</a>
-<a href="/delete/{{ t.id }}">🗑️</a>
+
+  {% if t.source == "trade" %}
+    {% if t.id %}
+      <button onclick="editRow('{{ t.id }}')">Edit</button>
+      <button onclick="deleteRow('{{ t.id }}')">Delete</button>
+    {% else %}
+      <!-- fallback -->
+      <a href="#">Edit</a>
+    {% endif %}
+  {% else %}
+    {% if t.id %}
+      <button onclick="deleteCash('{{ t.id }}')">Delete</button>
+    {% else %}
+      <a href="#">Delete</a>
+    {% endif %}
+  {% endif %}
+
 </td>
 
 </tr>
 
 {% endfor %}
-		
 
-<tr class="group-total">
-<td colspan="9"><b>Final Balance: ${{ "%.2f"|format(running_balance) }}</b></td>
+</td>
+
 </tr>
 
+{% endfor %}
+
 </tbody>
+
+
 </table>
 </div>
 
@@ -668,13 +690,47 @@ let lastSortCol = null;
 function toggleFields(){
     let type = document.getElementById("actionSelect").value;
     let tradeFields = document.getElementById("tradeFields");
+    let lotSelect = document.getElementById("lotSelect");
 
-    if(type === "BUY" || type === "SELL"){
-        tradeFields.style.display = "block";
+    
+    if(type === "SELL"){
+        lotSelect.style.display = "block";
+        loadLots(); // ✅ fetch lots
     } else {
-        tradeFields.style.display = "none";
+        lotSelect.style.display = "none";
     }
+
 }
+
+
+<!-- ✅ ADD Sell Validation -->
+function validateSell() {
+    const action = document.getElementById("actionSelect").value;
+
+    // ✅ only run for SELL
+    if (action !== "SELL") return true;
+
+    const sharesInput = parseFloat(document.querySelector('[name="shares"]').value || 0);
+    const lotDropdown = document.getElementById("lotSelect");
+
+    // ✅ require lot selection
+    if (!lotDropdown.value) {
+        alert("Please select a lot");
+        return false;
+    }
+
+    const selected = lotDropdown.selectedOptions[0];
+    const available = parseFloat(selected.dataset.shares);
+
+    // ✅ prevent overselling
+    if (sharesInput > available) {
+        alert(`Cannot sell more than ${available} shares in this lot`);
+        return false;
+    }
+
+    return true;
+}
+
 
 function sortTable(header, i){
     let table = header.closest("table");
@@ -782,6 +838,27 @@ function toggleGroup(header){
         row.style.display = row.style.display === "none" ? "" : "none";
         row = row.nextElementSibling;
     }
+}
+
+async function loadLots() {async    const account = document.querySelector('[name="account"]').value;
+    const symbol = document.querySelector('[name="stock"]').value;
+
+    if (!account || !symbol) return;
+
+    const res = await fetch(`/lots/${account}/${symbol}`);
+    const data = await res.json();
+
+    const dropdown = document.getElementById("lotSelect");
+    dropdown.innerHTML = '<option value="">Select Lot</option>';
+
+    data.lots.forEach(lot => {
+        const opt = document.createElement("option");
+        opt.value = lot.lot_id;
+        opt.text = `Lot ${lot.lot_id} (${lot.shares_remaining} shares @ $${lot.price})`;
+        opt.dataset.price = lot.price;
+        opt.dataset.shares = lot.shares_remaining;
+        dropdown.appendChild(opt);
+    });
 }
 
 </script>

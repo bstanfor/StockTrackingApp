@@ -149,6 +149,34 @@ def enrich_trades(trades):
 
     return trades
 
+def get_open_lots(trades, account, symbol):
+    trades = trades[(trades["account"] == account) & (trades["symbol"] == symbol)]
+    trades = trades.sort_values("date")
+
+    lots = []
+
+    for _, row in trades.iterrows():
+        if row["type"] == "BUY":
+            lots.append({
+                "lot_id": row["id"],   # ✅ use trade id as lot_id
+                "shares_remaining": row["shares"],
+                "price": row["price"]
+            })
+
+        elif row["type"] == "SELL":
+            remaining = row["shares"]
+
+            for lot in lots:
+                if remaining <= 0:
+                    break
+
+                used = min(remaining, lot["shares_remaining"])
+                lot["shares_remaining"] -= used
+                remaining -= used
+
+    # ✅ only return open lots
+    return [l for l in lots if l["shares_remaining"] > 0]
+
 def compute_positions(trades):
     if trades.empty:
         return []
@@ -356,6 +384,121 @@ def compute_metrics(trades, cash):
         "unrealized_pnl": round(unrealized_pnl, 2),
         "total_pnl": round(total_pnl, 2)
     }
+
+def build_activity(trades, cash):
+    
+    # ✅ SAFETY FILTER
+    trades = trades[trades["type"].isin(["BUY", "SELL", "DIVIDEND"])]
+
+    rows = []
+
+    # ------------------------
+    # TRADES (ONLY trades)
+    # ------------------------
+    for _, t in trades.iterrows():
+
+        shares = t.get("shares", 0)
+        price = t.get("price", 0)
+        fees = t.get("fees", 0)
+        trade_amount = shares * price
+        lot_id = t.get("lot_id", "")
+
+        account = t.get("account", "default")
+
+        if t["type"] == "BUY":
+            net_cash = -(trade_amount + fees)
+            pl_dollar = 0
+            pl_percent = 0
+
+        elif t["type"] == "SELL":
+            net_cash = trade_amount - fees
+
+            pl_dollar = t.get("realized_pnl", 0)
+
+            cost_basis = trade_amount - pl_dollar if trade_amount != 0 else 0
+            pl_percent = (pl_dollar / cost_basis * 100) if cost_basis != 0 else 0
+
+        elif t["type"] == "DIVIDEND":
+            trade_amount = t.get("amount", price)
+            net_cash = trade_amount
+
+            pl_dollar = 0
+            pl_percent = 0
+
+        else:
+            # Safety fallback (keeps trades isolated from contributions)
+            trade_amount = 0
+            net_cash = 0
+            pl_dollar = 0
+            pl_percent = 0
+
+        rows.append({
+            "id": t["id"],
+            "date": t["date"],
+            "account": account,             # ✅ multi-account restored
+            "symbol": t.get("symbol", ""),
+            "action": t["type"],
+            "lot_id": lot_id,
+            "shares": shares,
+            "share_price": price,
+            "trade_amount": trade_amount,
+            "fees": fees,
+            "net_cash_flow": net_cash,
+            "pl_dollar": pl_dollar,         # ✅ always 0-safe
+            "pl_percent": pl_percent,
+            "source": "trade"
+        })
+
+
+    # ------------------------
+    # CASH FLOWS (ONLY contributions / withdrawals)
+    # ------------------------
+    for _, c in cash.iterrows():
+
+        amount = c["amount"]
+        account = c.get("account", "default")
+
+        rows.append({
+            "id": c["id"],
+            "date": c["date"],
+            "account": account,            # ✅ multi-account here too
+            "symbol": "",
+            "action": c["description"],    # CONTRIBUTION / WITHDRAWAL
+            "lot_id": "",
+            "shares": 0,
+            "share_price": abs(amount),
+            "trade_amount": abs(amount),
+            "fees": 0,
+            "net_cash_flow": amount,
+            "pl_dollar": 0,                # ✅ UI consistency
+            "pl_percent": 0,
+            "source": "cash"               # ✅ explicit separation
+        })
+
+
+    df = pd.DataFrame(rows)
+
+    if df.empty:
+        return []
+
+    # ✅ Improved deterministic sorting
+    df = df.sort_values(["date", "id"])
+
+    # ✅ Running balance PER ACCOUNT (critical fix for multi-account)
+    df["balance"] = df.groupby("account")["net_cash_flow"].cumsum()
+
+    return df.to_dict("records")
+
+
+def account_balances(activity):
+    if not activity:
+        return {}
+
+    df = pd.DataFrame(activity)
+
+    balances = df.groupby("account")["cash"].sum().to_dict()
+
+    return {k: round(v, 2) for k, v in balances.items()}
 
 def account_performance(trades, cash): # ✅ Account Performance Dashboard
     if trades.empty:
@@ -584,6 +727,8 @@ def index():
     # ✅ analytic
     trades = enrich_trades(trades)
     metrics = compute_metrics(trades, cash)
+    activity = build_activity(trades, cash)
+    account_bal = account_balances(activity)
     period = request.args.get("period", "1Y")
     chart = equity_chart(trades, cash, period="1Y")
     positions = compute_positions(trades)
@@ -602,6 +747,8 @@ def index():
         transactions=trades.to_dict("records"),
         cash_flows=cash.to_dict("records"),
         positions=positions,
+        activity=activity,
+        account_bal = account_balances(activity),
         allocation_chart=alloc_chart,
         #  ✅ dropdown list
         accounts= ["All"] + db_accounts,
@@ -613,6 +760,15 @@ def index():
         selected_period=period,
         **metrics
     )
+
+@app.route("/lots/<account>/<symbol>")
+def lots(account, symbol):
+    trades, _ = load_data()
+    trades = enrich_trades(trades)
+
+    lots = get_open_lots(trades, account, symbol)
+
+    return {"lots": lots}
 
 @app.route("/price/<symbol>")
 def get_price(symbol):
@@ -711,22 +867,7 @@ def add_cash():
     else:
         signed_amount = amount
 
-    # ✅ INSERT INTO transactions (so Activity table works)
-    conn.execute("""
-    INSERT INTO transactions(account,date,symbol,type,shares,price,fees,lot_id)
-    VALUES(?,?,?,?,?,?,?,?)
-    """, (
-        account,
-        date,
-        symbol,
-        txn_type,
-        0,
-        amount,   # ✅ store amount in price (UI expects this)
-        0,
-        0
-    ))
-
-    # ✅ INSERT INTO cash_flows (for metrics)
+        # ✅ INSERT INTO cash_flows (for metrics)
     conn.execute("""
     INSERT INTO cash_flows(account,date,amount,description)
     VALUES(?,?,?,?)
@@ -747,7 +888,8 @@ def edit(id):
     conn = get_db_connection()
     tx = conn.execute("SELECT * FROM transactions WHERE id=?", (id,)).fetchone()
     conn.close()
-    return render_template("edit.html", transaction=tx, accounts=ACCOUNTS)
+    return render_template("edit.html", transaction=tx, accounts=load_accounts()
+    )
 
 @app.route("/update/<int:id>", methods=["POST"])
 def update(id):
@@ -778,6 +920,30 @@ def delete(id):
     conn.close()
     return redirect("/")
 
+@app.route("/delete_cash/<int:id>")
+def delete_cash(id):
+    conn = get_db_connection()
+    cash_row = conn.execute(
+        "SELECT * FROM cash_flows WHERE id=?", (id,)
+    ).fetchone()
+
+    if cash_row:
+        # delete cash record
+        conn.execute("DELETE FROM cash_flows WHERE id=?", (id,))
+
+        # delete matching transaction record
+        conn.execute("""
+            DELETE FROM transactions
+            WHERE account=? AND date=? AND type=?
+        """, (
+            cash_row["account"],
+            cash_row["date"],
+            cash_row["description"]
+        ))
+
+    conn.commit()
+    conn.close()
+    return redirect("/")
     
 @app.route("/upload", methods=["POST"])
 def upload():
