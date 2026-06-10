@@ -556,8 +556,6 @@ ${{ "%.2f"|format(p.unrealized_pnl) }}
 
 {% for t in activity %}
 
-{% for t in activity %}
-
 {# ✅ Backward compatibility: prefer action, fallback to type #}
 {% set action = t.action if t.action is defined and t.action else t.type %}
 
