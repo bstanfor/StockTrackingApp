@@ -380,38 +380,89 @@ Portfolio Growth: ${{ analytics.total_pnl }}
 
 <thead>
 <tr>
-<th onclick="sortTable(this,0)">Date</th>
-<th onclick="sortTable(this,1)">Account</th>
-<th onclick="sortTable(this,2)">Symbol</th>
-<th onclick="sortTable(this,3)">Type</th>
-<th onclick="sortTable(this,4)">Cash</th>
-<th onclick="sortTable(this,5)">Shares</th>
-<th onclick="sortTable(this,6)">Price</th>
-<th onclick="sortTable(this,7)">P&L</th>
-<th onclick="sortTable(this,8)">Balance</th>
-<th>Actions</th>
+    <th onclick="sortTable(this,0)">Account</th>
+    <th onclick="sortTable(this,1)">Symbol</th>
+    <th onclick="sortTable(this,2)">Shares</th>
+    <th onclick="sortTable(this,3)">Last Price</th>
+    <th onclick="sortTable(this,4)">Today's G/L</th>
+    <th onclick="sortTable(this,5)">Total G/L</th>
+    <th onclick="sortTable(this,6)">Current Value</th>
+    <th onclick="sortTable(this,7)">Cost Basis</th>
+    <th onclick="sortTable(this,8)">% of Account</th>
 </tr>
 </thead>
 
 <tbody>
-{% for p in positions %}
+
+{% for account_name, acct in account_positions.items() %}
+
+<tr class="account-header">
+    <td colspan="9"><strong>{{ account_name }}</strong></td>
+</tr>
+
+<tr class="cash-row static-row">
+    <td data-value="{{ account_name }}">{{ account_name }}</td>
+    <td data-value="CASH">CASH</td>
+    <td>-</td>
+    <td>-</td>
+
+    <td data-value="0">$0.00 (0.00%)</td>
+    <td data-value="0">$0.00 (0.00%)</td>
+
+    <td data-value="{{ acct.cash }}">
+        <strong>${{ "%.2f"|format(acct.cash) }}</strong>
+    </td>
+
+    <td data-value="{{ acct.cash }}">
+        ${{ "%.2f"|format(acct.cash) }}
+    </td>
+
+    <td>-</td>
+</tr>
+
+{% for p in acct.positions %}
 <tr>
-<td>{{ p.symbol }}</td>
-<td>{{ "%.2f"|format(p.shares) }}</td>
 
-<td class="price" data-symbol="{{ p.symbol }}">
-${{ "%.2f"|format(p.price) }}
-</td>
+    <td data-value="{{ account_name }}">{{ account_name }}</td>
+    <td data-value="{{ p.symbol }}">{{ p.symbol }}</td>
 
-<td>${{ "%.2f"|format(p.value) }}</td>
+    <td data-value="{{ p.shares }}">
+        {{ "%.2f"|format(p.shares) }}
+    </td>
 
-<td class="{% if p.unrealized_pnl >= 0 %}positive{% else %}negative{% endif %}">
-${{ "%.2f"|format(p.unrealized_pnl) }}
-</td>
+    <td data-value="{{ p.price }}" class="price">
+        ${{ "%.2f"|format(p.price) }}
+    </td>
 
-<td>{{ "%.2f"|format(p.unrealized_pct) }}%</td>
+    <td data-value="{{ p.today_pnl }}"
+        class="{% if p.today_pnl >= 0 %}positive{% else %}negative{% endif %}">
+        ${{ "%.2f"|format(p.today_pnl) }}
+        ({{ "%.2f"|format(p.today_pct) }}%)
+    </td>
+
+    <td data-value="{{ p.unrealized_pnl }}"
+        class="{% if p.unrealized_pnl >= 0 %}positive{% else %}negative{% endif %}">
+        ${{ "%.2f"|format(p.unrealized_pnl) }}
+        ({{ "%.2f"|format(p.unrealized_pct) }}%)
+    </td>
+
+    <td data-value="{{ p.value }}">
+        ${{ "%.2f"|format(p.value) }}
+    </td>
+
+    <td data-value="{{ p.cost_basis }}">
+        ${{ "%.2f"|format(p.cost_basis) }}
+    </td>
+
+    <td data-value="{{ p.account_pct }}">
+        {{ "%.2f"|format(p.account_pct) }}%
+    </td>
+
 </tr>
 {% endfor %}
+
+{% endfor %}
+
 </tbody>
 
 </table>
@@ -447,6 +498,7 @@ ${{ "%.2f"|format(p.unrealized_pnl) }}
     <option value="SELL">SELL</option>
     <option value="DIVIDEND">DIVIDEND</option>
     <option value="CONTRIBUTION">CONTRIBUTION</option>
+    <option value="Starting Cash">STARTINGCASH</option>
     <option value="WITHDRAWAL">WITHDRAWAL</option>
 </select>
 
@@ -580,7 +632,14 @@ ${{ "%.2f"|format(p.unrealized_pnl) }}
 ">
 
 <!-- ✅ LOT ID -->
-<td>{{ t.lot_id or "-" }}</td>
+<td>
+{% if action in ["BUY", "SELL"] %}
+    {{ t.lot_id or "-" }}
+{% else %}
+    -
+{% endif %}
+</td>
+
 
 <!-- ✅ DATE (robust handling: datetime or string) -->
 <td data-date="{{
@@ -601,16 +660,44 @@ ${{ "%.2f"|format(p.unrealized_pnl) }}
 <td>{{ action or "-" }}</td>
 
 <!-- ✅ SHARES (preserve old behavior: always show numeric) -->
-<td>{{ "%.2f"|format(shares) }}</td>
+<td>
+{% if action in ["BUY", "SELL"] %}
+    {{ "%.2f"|format(shares) }}
+{% else %}
+    -
+{% endif %}
+</td>
+
 
 <!-- ✅ PRICE -->
-<td>${{ "%.2f"|format(price) }}</td>
+<td>
+{% if action in ["BUY", "SELL"] %}
+    ${{ "%.2f"|format(price) }}
+{% else %}
+    -
+{% endif %}
+</td>
+
 
 <!-- ✅ TRADE AMOUNT -->
-<td>${{ "%.2f"|format(amount) }}</td>
+<td>
+{% if action in ["BUY", "SELL"] %}
+    ${{ "%.2f"|format(amount) }}
+{% else %}
+    -
+{% endif %}
+</td>
+
 
 <!-- ✅ FEES -->
-<td>${{ "%.2f"|format(fees) }}</td>
+<td>
+{% if action in ["BUY", "SELL"] %}
+    ${{ "%.2f"|format(fees) }}
+{% else %}
+    -
+{% endif %}
+</td>
+
 
 <!-- ✅ NET CASH FLOW (safe + signed + styled) -->
 <td class="amount {% if net >= 0 %}positive{% else %}negative{% endif %}">
@@ -725,48 +812,60 @@ function validateSell() {
 }
 
 
-function sortTable(header, i){
-    let table = header.closest("table");
-    let rows = [...table.tBodies[0].rows]; // ✅ safer (only tbody)
-    let asc = !header.classList.contains("asc");
+function sortTable(header, colIndex) {
+    const table = header.closest("table");
+    const tbody = table.querySelector("tbody");
 
-    table.querySelectorAll("th").forEach(th => 
-        th.classList.remove("asc","desc")
-    );
-
-    header.classList.add(asc ? "asc" : "desc");
-
-    rows.sort((a,b)=>{
-        let A = a.cells[i].dataset.date || a.cells[i].innerText.trim();
-        let B = b.cells[i].dataset.date || b.cells[i].innerText.trim();
-
-        // ✅ ✅ DATE SORT FIX (critical)
-		let dateA = Date.parse(A);
-        let dateB = Date.parse(B);
-
-        if(!isNaN(dateA) && !isNaN(dateB)){
-            if(dateA !== dateB){
-                return asc ? dateA - dateB : dateB - dateA;
-            }
-
-            // ✅ secondary sort by amount
-            let amtA = parseFloat(a.cells[4].innerText.replace(/[^0-9.-]+/g,""));
-            let amtB = parseFloat(b.cells[4].innerText.replace(/[^0-9.-]+/g,""));
-
-            return asc ? amtA - amtB : amtB - amtA;
-        }
-        // ✅ numbers ($, %, commas)
-        let numA = parseFloat(A.replace(/[^0-9.-]+/g,""));
-        let numB = parseFloat(B.replace(/[^0-9.-]+/g,""));
-
-        if(!isNaN(numA) && !isNaN(numB)){
-            return asc ? numA - numB : numB - numA;
-        }
-
-        return asc ? A.localeCompare(B) : B.localeCompare(A);
+    // Clear other headers
+    table.querySelectorAll("th").forEach(th => {
+        if (th !== header) th.classList.remove("asc", "desc");
     });
 
-    rows.forEach(r => table.tBodies[0].appendChild(r));
+    const asc = header.classList.toggle("asc");
+    header.classList.toggle("desc", !asc);
+
+    let groups = [];
+    let currentGroup = [];
+
+    Array.from(tbody.children).forEach(row => {
+        if (row.classList.contains("account-header")) {
+            if (currentGroup.length) groups.push(currentGroup);
+            currentGroup = [row];
+        } else {
+            currentGroup.push(row);
+        }
+    });
+    if (currentGroup.length) groups.push(currentGroup);
+
+    groups.forEach(group => {
+        const headerRow = group[0];
+        const rows = group.slice(1).filter(r => !r.classList.contains("static-row"));
+
+        rows.sort((a, b) => {
+            let aVal = a.children[colIndex]?.getAttribute("data-value") || a.children[colIndex]?.innerText || "";
+            let bVal = b.children[colIndex]?.getAttribute("data-value") || b.children[colIndex]?.innerText || "";
+
+            const aNum = parseFloat(aVal.toString().replace(/[^0-9.-]+/g, ""));
+            const bNum = parseFloat(bVal.toString().replace(/[^0-9.-]+/g, ""));
+
+            if (!isNaN(aNum) && !isNaN(bNum)) {
+                return asc ? aNum - bNum : bNum - aNum;
+            }
+
+            return asc ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+        });
+
+        const cashRow = group.find(r => r.classList.contains("static-row"));
+
+        group.length = 0;
+        group.push(headerRow);
+
+        if (cashRow) group.push(cashRow);
+
+        rows.forEach(r => group.push(r));
+    });
+
+    groups.forEach(group => group.forEach(row => tbody.appendChild(row)));
 }
 
 function groupBySymbol(){

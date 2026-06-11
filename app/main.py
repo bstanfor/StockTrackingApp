@@ -56,6 +56,27 @@ def init_db():
     conn.commit()
     conn.close()
 
+# ✅ Global cache
+price_cache = {}
+
+def get_price_cached(symbol):
+    if symbol in price_cache:
+        return price_cache[symbol]
+
+    try:
+        data = yf.Ticker(symbol).history(period="2d")
+
+        if not data.empty:
+            price = data["Close"].iloc[-1]
+            prev = data["Close"].iloc[-2] if len(data) > 1 else price
+        else:
+            price, prev = 0, 0
+    except:
+        price, prev = 0, 0
+
+    price_cache[symbol] = (price, prev)
+    return price, prev
+
 # ---------------------------
 # UTIL
 # ---------------------------
@@ -179,92 +200,99 @@ def get_open_lots(trades, account, symbol):
 
 def compute_positions(trades):
     if trades.empty:
-        return []
+        return {}
 
-    inventory = {}
-    positions = {}
+    result = {}
+    
+    accounts = trades["account"].unique()
 
-    # Build FIFO inventory
-    for _, row in trades.iterrows():
-        sym = row["symbol"]
+    for acc in accounts:
+        acc_trades = trades[trades["account"] == acc]
 
-        inventory.setdefault(sym, [])
-        positions.setdefault(sym, 0)
+        inventory = {}
+        positions = {}
+        cash = 0
 
-        if row["type"] == "BUY":
-            inventory[sym].append({
-                "shares": row["shares"],
-                "price": row["price"]
+        for _, row in acc_trades.iterrows():
+            sym = row["symbol"]
+
+            inventory.setdefault(sym, [])
+            positions.setdefault(sym, 0)
+
+            if row["type"] == "BUY":
+                inventory[sym].append({
+                    "shares": row["shares"],
+                    "price": row["price"]
+                })
+                positions[sym] += row["shares"]
+                cash -= row["shares"] * row["price"]
+
+            elif row["type"] == "SELL":
+                remaining = row["shares"]
+                positions[sym] -= row["shares"]
+                cash += row["shares"] * row["price"]
+
+                while remaining > 0 and inventory[sym]:
+                    lot = inventory[sym][0]
+                    used = min(remaining, lot["shares"])
+                    lot["shares"] -= used
+                    remaining -= used
+
+                    if lot["shares"] == 0:
+                        inventory[sym].pop(0)
+
+        account_positions = []
+        total_value = 0
+
+        for sym, shares in positions.items():
+            if shares <= 0:
+                continue
+
+            price, prev_price = get_price_cached(sym)
+
+            cost = sum(l["shares"] * l["price"] for l in inventory[sym])
+            value = shares * price
+
+            unrealized_pnl = value - cost
+            today_pnl = shares * (price - prev_price)
+
+            account_positions.append({
+                "symbol": sym,
+                "shares": shares,
+                "price": round(price, 2),
+                "value": round(value, 2),
+                "cost_basis": round(cost, 2),
+                "avg_cost": round(cost / shares, 2) if shares else 0,
+                "unrealized_pnl": round(unrealized_pnl, 2),
+                "unrealized_pct": round((unrealized_pnl / cost * 100), 2) if cost else 0,
+                "today_pnl": round(today_pnl, 2),
+                "today_pct": round(((price - prev_price) / prev_price * 100), 2) if prev_price else 0
             })
-            positions[sym] += row["shares"]
 
-        elif row["type"] == "SELL":
-            remaining = row["shares"]
-            positions[sym] -= row["shares"]
+            total_value += value
 
-            while remaining > 0 and len(inventory[sym]) > 0:
-                lot = inventory[sym][0]
+        for p in account_positions:
+            p["account_pct"] = round(
+                (p["value"] / total_value * 100) if total_value else 0,
+                2
+            )
 
-                used = min(remaining, lot["shares"])
-                lot["shares"] -= used
-                remaining -= used
+        result[acc] = {
+            "positions": account_positions,
+            "cash": round(cash, 2),
+            "total_value": round(total_value, 2)
+        }
 
-                if lot["shares"] == 0:
-                    inventory[sym].pop(0)
+    
+    # ✅compute total portfolio value
+    grand_total = sum(acc["total_value"] for acc in result.values())
 
-    result = []
-
-    total_value = 0
-
-    # First pass: compute value
-    temp = []
-    for sym, shares in positions.items():
-        if shares <= 0:
-            continue
-
-        try:
-            data = yf.Ticker(sym).history(period="1d")
-            price = data["Close"].iloc[-1] if not data.empty else 0
-        except:
-            price = 0
-
-        remaining_cost = sum(l["shares"] * l["price"] for l in inventory[sym])
-        value = shares * price
-        unrealized_pnl = value - remaining_cost
-
-        temp.append({
-            "symbol": sym,
-            "shares": shares,
-            "price": price,
-            "value": value,
-            "cost_basis_total": remaining_cost,
-            "unrealized_pnl": unrealized_pnl
-        })
-
-        total_value += value
-
-    # Second pass: add %
-    for p in temp:
-        shares = p["shares"]
-        value = p["value"]
-        cost = p["cost_basis_total"]
-        unrealized_pnl = p["unrealized_pnl"]
-
-        avg_cost = cost / shares if shares > 0 else 0
-
-        unrealized_pct = (unrealized_pnl / cost * 100) if cost != 0 else 0
-        allocation_pct = (value / total_value * 100) if total_value != 0 else 0
-
-        result.append({
-            "symbol": p["symbol"],
-            "shares": shares,
-            "price": round(p["price"], 2),
-            "value": round(value, 2),
-            "cost_basis": round(avg_cost, 2),
-            "unrealized_pnl": round(unrealized_pnl, 2),
-            "unrealized_pct": round(unrealized_pct, 2),
-            "allocation_pct": round(allocation_pct, 2)
-        })
+    for acc in result.values():
+        for p in acc["positions"]:
+            p["portfolio_pct"] = round(
+                (p["value"] / grand_total * 100) if grand_total else 0,
+                2
+            )
 
     return result
 
@@ -303,10 +331,7 @@ def calculate_cash_flow(row):
         return row["shares"] * row["price"] - row["fees"]
     elif row["type"] == "DIVIDEND":
         return row["price"]
-    elif row["type"] == "CONTRIBUTION":
-        return row["price"]
-    elif row["type"] == "WITHDRAWAL":
-        return -row["price"]
+
     return 0
 
 def compute_metrics(trades, cash):
@@ -364,10 +389,10 @@ def compute_metrics(trades, cash):
         if shares <= 0:
             continue
 
-        try:
-            price = yf.Ticker(sym).history(period="1d")["Close"].iloc[-1]
-        except:
-            price = 0
+        price, prev_price = get_price_cached(sym)
+
+        cost = sum(l["shares"] * l["price"] for l in inventory[sym])
+        value = shares * price
 
         remaining_cost = sum(l["shares"] * l["price"] for l in inventory[sym])
         avg_cost = remaining_cost / shares if shares > 0 else 0
@@ -375,7 +400,7 @@ def compute_metrics(trades, cash):
         portfolio_value += shares * price
         unrealized_pnl += shares * (price - avg_cost)
 
-    total_pnl = realized_pnl + unrealized_pnl
+        total_pnl = realized_pnl + unrealized_pnl
 
     return {
         "total_cash": round(cash_balance, 2),
@@ -451,12 +476,21 @@ def build_activity(trades, cash):
 
 
     # ------------------------
-    # CASH FLOWS (ONLY contributions / withdrawals)
+    # CASH FLOWS (ONLY contributions Starting balance, Dividends/ withdrawals)
     # ------------------------
     for _, c in cash.iterrows():
 
         amount = c["amount"]
         account = c.get("account", "default")
+        action = c["description"]
+
+        # ✅ EXPLICIT LOGIC (recommended)
+        if action == "WITHDRAWAL":
+            net_cash = amount  # already negative
+        elif action in ["CONTRIBUTION", "STARTINGCASH", "DIVIDEND"]:
+            net_cash = amount  # positive inflow
+        else:
+            net_cash = amount  # fallback safeguard
 
         rows.append({
             "id": c["id"],
@@ -496,7 +530,13 @@ def account_balances(activity):
 
     df = pd.DataFrame(activity)
 
-    balances = df.groupby("account")["cash"].sum().to_dict()
+    # ✅ guard for missing columns 
+    if "balance" not in df.columns:
+        return {}
+
+    # ✅ Get LAST balance per account
+    df = df.sort_values(["account", "date", "id"])
+    balances = df.groupby("account")["balance"].last().to_dict()
 
     return {k: round(v, 2) for k, v in balances.items()}
 
@@ -544,10 +584,7 @@ def account_performance(trades, cash): # ✅ Account Performance Dashboard
         # ✅ calculate unrealized
         unrealized = 0
         for sym, lots in inventory.items():
-            try:
-                price = yf.Ticker(sym).history(period="1d")["Close"].iloc[-1]
-            except:
-                price = 0
+            price, _ = get_price_cached(sym)
 
             for shares, cost in lots:
                 unrealized += shares * (price - cost)
@@ -704,6 +741,9 @@ def performance_analytics(trades, cash, period="90D"):
 @app.route("/")
 def index():
 
+    # ✅ clear price cache (fresh data per page load)
+    price_cache.clear()
+
     # ✅ get selected accounts (multi-select)
     selected_accounts = request.args.getlist("account")
     
@@ -731,7 +771,7 @@ def index():
     account_bal = account_balances(activity)
     period = request.args.get("period", "1Y")
     chart = equity_chart(trades, cash, period="1Y")
-    positions = compute_positions(trades)
+    account_positions = compute_positions(trades)
     account_perf = account_performance(trades, cash) # ✅ Account Performance update
     
     # analytics function
@@ -740,13 +780,19 @@ def index():
 
 
     # ✅ allocation chart (with cash)    
-    alloc_chart = allocation_chart(positions, metrics["total_cash"])
+    all_positions = []
+
+    for acc in account_positions.values():
+        all_positions.extend(acc["positions"])
+
+    alloc_chart = allocation_chart(all_positions, metrics["total_cash"])
+
 
     return render_template(
         "index.html",
         transactions=trades.to_dict("records"),
         cash_flows=cash.to_dict("records"),
-        positions=positions,
+        account_positions=account_positions,
         activity=activity,
         account_bal = account_balances(activity),
         allocation_chart=alloc_chart,
@@ -773,7 +819,7 @@ def lots(account, symbol):
 @app.route("/price/<symbol>")
 def get_price(symbol):
     try:
-        price = yf.Ticker(symbol).history(period="1d")["Close"].iloc[-1]
+        price = get_price_cached(sym)
     except:
         price = 0
 
