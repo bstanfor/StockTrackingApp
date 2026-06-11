@@ -819,7 +819,7 @@ def lots(account, symbol):
 @app.route("/price/<symbol>")
 def get_price(symbol):
     try:
-        price = get_price_cached(sym)
+        price, _ = get_price_cached(symbol)
     except:
         price = 0
 
