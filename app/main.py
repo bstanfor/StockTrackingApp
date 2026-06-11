@@ -242,7 +242,7 @@ def compute_positions(trades):
                         inventory[sym].pop(0)
 
         account_positions = []
-        total_value = 0
+        total_value = cash
 
         for sym, shares in positions.items():
             if shares <= 0:
@@ -397,10 +397,10 @@ def compute_metrics(trades, cash):
         remaining_cost = sum(l["shares"] * l["price"] for l in inventory[sym])
         avg_cost = remaining_cost / shares if shares > 0 else 0
 
-        portfolio_value += shares * price
+        portfolio_value += value
         unrealized_pnl += shares * (price - avg_cost)
 
-        total_pnl = realized_pnl + unrealized_pnl
+    total_pnl = realized_pnl + unrealized_pnl
 
     return {
         "total_cash": round(cash_balance, 2),

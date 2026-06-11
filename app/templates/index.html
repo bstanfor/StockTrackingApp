@@ -436,7 +436,9 @@ Portfolio Growth: ${{ analytics.total_pnl }}
         ${{ "%.2f"|format(acct.cash) }}
     </td>
 
-    <td>-</td>
+    <td data-value="{{ (acct.cash / acct.total_value * 100) if acct.total_value else 0 }}">
+        {{ "%.2f"|format((acct.cash / acct.total_value * 100) if acct.total_value else 0) }}%
+    </td>
 </tr>
 
 {% for p in acct.positions %}
@@ -973,6 +975,27 @@ async function loadLots() {
     });
 }
 
+function editRow(id) {
+    if (!id) return;
+    window.location.href = `/edit/${id}`;
+}
+
+function deleteRow(id) {
+    if (!id) return;
+
+    if (!confirm("Delete this trade?")) return;
+
+    fetch(`/delete/${id}`)
+        .then(() => location.reload());
+}
+
+function deleteCash(id) {
+    if (!id) return;
+
+    if (confirm("Are you sure you want to delete this cash transaction?")) {
+        window.location.href = `/delete_cash/${id}`;
+    }
+}
 </script>
 
 </body>
