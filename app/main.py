@@ -198,21 +198,32 @@ def get_open_lots(trades, account, symbol):
     # ✅ only return open lots
     return [l for l in lots if l["shares_remaining"] > 0]
 
-def compute_positions(trades):
-    if trades.empty:
+def compute_positions(trades, cash):
+    if trades.empty and (cash is None or cash.empty):
         return {}
 
     result = {}
     
-    accounts = trades["account"].unique()
+    accounts = set(trades["account"].unique())
+
+    # ✅ include accounts that only have cash (no trades)
+    if cash is not None and not cash.empty:
+        accounts |= set(cash["account"].unique())
 
     for acc in accounts:
-        acc_trades = trades[trades["account"] == acc]
+        acc_trades = trades[trades["account"] == acc] if not trades.empty else pd.DataFrame()
+        acc_cash = cash[cash["account"] == acc] if cash is not None and not cash.empty else pd.DataFrame()
 
         inventory = {}
         positions = {}
-        cash = 0
 
+        # ✅ START CASH FROM CASH FLOWS (CRITICAL FIX)
+        cash_balance = acc_cash["amount"].sum() if not acc_cash.empty else 0
+        cash_val = cash_balance
+
+        # -------------------------
+        # PROCESS TRADES
+        # -------------------------
         for _, row in acc_trades.iterrows():
             sym = row["symbol"]
 
@@ -225,24 +236,32 @@ def compute_positions(trades):
                     "price": row["price"]
                 })
                 positions[sym] += row["shares"]
-                cash -= row["shares"] * row["price"]
+
+                # ✅ include fees
+                cash_val -= (row["shares"] * row["price"] + row["fees"])
 
             elif row["type"] == "SELL":
                 remaining = row["shares"]
                 positions[sym] -= row["shares"]
-                cash += row["shares"] * row["price"]
+
+                # ✅ include fees
+                cash_val += (row["shares"] * row["price"] - row["fees"])
 
                 while remaining > 0 and inventory[sym]:
                     lot = inventory[sym][0]
                     used = min(remaining, lot["shares"])
+
                     lot["shares"] -= used
                     remaining -= used
 
                     if lot["shares"] == 0:
                         inventory[sym].pop(0)
 
+        # -------------------------
+        # BUILD POSITIONS
+        # -------------------------
         account_positions = []
-        total_value = cash
+        total_value = cash_val
 
         for sym, shares in positions.items():
             if shares <= 0:
@@ -271,6 +290,9 @@ def compute_positions(trades):
 
             total_value += value
 
+        # -------------------------
+        # ACCOUNT %
+        # -------------------------
         for p in account_positions:
             p["account_pct"] = round(
                 (p["value"] / total_value * 100) if total_value else 0,
@@ -279,12 +301,13 @@ def compute_positions(trades):
 
         result[acc] = {
             "positions": account_positions,
-            "cash": round(cash, 2),
+            "cash": round(cash_val, 2),  # ✅ FIXED CASH
             "total_value": round(total_value, 2)
         }
 
-    
-    # ✅compute total portfolio value
+    # -------------------------
+    # PORTFOLIO %
+    # -------------------------
     grand_total = sum(acc["total_value"] for acc in result.values())
 
     for acc in result.values():
@@ -295,6 +318,7 @@ def compute_positions(trades):
             )
 
     return result
+
 
 def allocation_chart(positions, total_cash):
     data = []
@@ -771,7 +795,7 @@ def index():
     account_bal = account_balances(activity)
     period = request.args.get("period", "1Y")
     chart = equity_chart(trades, cash, period="1Y")
-    account_positions = compute_positions(trades)
+    account_positions = compute_positions(trades, cash)
     account_perf = account_performance(trades, cash) # ✅ Account Performance update
     
     # analytics function
