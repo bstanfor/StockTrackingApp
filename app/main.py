@@ -714,6 +714,12 @@ def performance_analytics(trades, cash, period="90D"):
     else:
         start = today - pd.Timedelta(days=90)
 
+    # ✅ invested capital to date (all-time, not just this period) is the correct return denominator
+    all_time_cash = cash[cash["date"] <= today]
+    all_time_contrib = all_time_cash[all_time_cash["description"] == "CONTRIBUTION"]["amount"].sum() if not all_time_cash.empty else 0
+    all_time_withdraw = abs(all_time_cash[all_time_cash["description"] == "WITHDRAWAL"]["amount"].sum()) if not all_time_cash.empty else 0
+    invested_capital = all_time_contrib - all_time_withdraw
+
     trades = trades[trades["date"] >= start]
     cash = cash[cash["date"] >= start]
 
@@ -727,7 +733,7 @@ def performance_analytics(trades, cash, period="90D"):
         monthly_div = pd.Series()
         yearly_div = pd.Series()
 
-    # ✅ contributions / withdrawals
+    # ✅ contributions / withdrawals (within selected period, for display)
     contrib = cash[cash["description"] == "CONTRIBUTION"]["amount"].sum() if not cash.empty else 0
     withdraw = abs(cash[cash["description"] == "WITHDRAWAL"]["amount"].sum()) if not cash.empty else 0
 
@@ -736,9 +742,8 @@ def performance_analytics(trades, cash, period="90D"):
     # ✅ pnl
     total_pnl = trades["realized_pnl"].sum() if not trades.empty else 0
 
-    # ✅ true return
-    invested = net_contribution if net_contribution != 0 else 1
-    true_return_pct = (total_pnl / invested) * 100
+    # ✅ true return: growth this period vs total invested capital to date (avoid divide-by-zero)
+    true_return_pct = (total_pnl / invested_capital) * 100 if invested_capital else 0
 
     # ✅ chart
     df = pd.DataFrame({
