@@ -90,6 +90,9 @@ body.dark {
 
 body.dark th { background: #222; }
 body.dark table { border-color: #444; }
+body.dark .header { background: #121212; color: #eee; }
+body.dark .tab-btn { color: #eee; }
+body.dark .actions { background: #121212; }
 
 .tab { display: none; }
 
@@ -502,7 +505,7 @@ Portfolio Growth: ${{ analytics.total_pnl }}
 <!-- ✅ KEEP: Add Activity -->
 <h3>Add Activity</h3>
 
-<form method="POST" action="/add_trade"> onsubmit="return validateSell()">
+<form method="POST" action="/add_trade" onsubmit="return validateSell()">
 
 <select name="account" required>
 {% for acc in accounts %}
