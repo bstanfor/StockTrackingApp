@@ -115,6 +115,11 @@ def load_accounts():
 # ---------------------------
 def enrich_trades(trades):
     if trades.empty:
+        # ensure downstream code can still rely on these columns existing
+        trades = trades.copy()
+        trades["trade_amount"] = pd.Series(dtype="float64")
+        trades["realized_pnl"] = pd.Series(dtype="float64")
+        trades["realized_pct"] = pd.Series(dtype="float64")
         return trades
 
     trades = trades.sort_values("date").copy()
