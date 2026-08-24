@@ -60,22 +60,28 @@ def init_db():
 price_cache = {}
 
 def get_price_cached(symbol):
+    symbol = str(symbol).strip().upper()
+
     if symbol in price_cache:
         return price_cache[symbol]
 
     try:
-        data = yf.Ticker(symbol).history(period="2d")
+        ticker = yf.Ticker(symbol)
+        data = ticker.history(period="5d", auto_adjust=False)
 
-        if not data.empty:
-            price = data["Close"].iloc[-1]
-            prev = data["Close"].iloc[-2] if len(data) > 1 else price
+        closes = data["Close"].dropna() if "Close" in data else pd.Series(dtype="float64")
+        if not closes.empty:
+            price = closes.iloc[-1]
+            prev = closes.iloc[-2] if len(closes) > 1 else price
         else:
-            price, prev = 0, 0
-    except:
+            price = ticker.fast_info.get("lastPrice") or 0
+            prev = ticker.fast_info.get("previousClose") or price
+    except Exception:
         price, prev = 0, 0
 
-    price_cache[symbol] = (price, prev)
-    return price, prev
+    result = (float(price), float(prev))
+    price_cache[symbol] = result
+    return result
 
 # ---------------------------
 # UTIL
