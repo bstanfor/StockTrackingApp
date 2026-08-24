@@ -82,6 +82,7 @@ def test_index_reflects_trade_and_cash(client):
     assert resp.status_code == 200
     assert "AAPL" in html
     assert "Brokerage" in html
+    assert 'data-symbol="AAPL"' in html
 
 
 # ---------------------------
@@ -235,6 +236,13 @@ def test_price_endpoint_returns_mocked_price(client):
 
     assert resp.status_code == 200
     assert data["price"] == 100.0
+
+
+def test_price_endpoint_rejects_undefined_symbol(client):
+    resp = client.get("/price/undefined")
+
+    assert resp.status_code == 400
+    assert resp.get_json()["error"] == "A valid symbol is required"
 
 
 def test_compute_positions_after_partial_sell(client):

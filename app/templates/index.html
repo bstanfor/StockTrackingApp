@@ -454,7 +454,7 @@ Portfolio Growth: ${{ analytics.total_pnl }}
         {{ "%.2f"|format(p.shares) }}
     </td>
 
-    <td data-value="{{ p.price }}" class="price">
+    <td data-value="{{ p.price }}" data-symbol="{{ p.symbol }}" class="price">
         ${{ "%.2f"|format(p.price) }}
     </td>
 
@@ -921,9 +921,16 @@ r.style.display=r.innerText.toLowerCase().includes(input)? "":"none";
 async function refreshPrices(){
 let cells=document.querySelectorAll(".price");
 for(let c of cells){
-let r=await fetch(`/price/${c.dataset.symbol}`);
-let d=await r.json();
-c.innerText="$"+d.price.toFixed(2);
+let symbol=c.dataset.symbol?.trim();
+if(!symbol) continue;
+try {
+    let r=await fetch(`/price/${encodeURIComponent(symbol)}`);
+    if(!r.ok) continue;
+    let d=await r.json();
+    c.innerText="$"+d.price.toFixed(2);
+} catch(error) {
+    console.warn(`Unable to refresh ${symbol}`, error);
+}
 }
 }
 setInterval(refreshPrices,30000);

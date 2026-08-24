@@ -858,9 +858,13 @@ def lots(account, symbol):
 
 @app.route("/price/<symbol>")
 def get_price(symbol):
+    symbol = symbol.strip().upper()
+    if not symbol or symbol in {"UNDEFINED", "NULL", "NONE"}:
+        return {"error": "A valid symbol is required"}, 400
+
     try:
         price, _ = get_price_cached(symbol)
-    except:
+    except Exception:
         price = 0
 
     return {"price": float(price)}
