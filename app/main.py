@@ -370,16 +370,16 @@ def calculate_cash_flow(row):
     return 0
 
 def compute_metrics(trades, cash):
+    contributions = cash["amount"].sum() if cash is not None and not cash.empty else 0
+
     if trades is None or len(trades) == 0:
         return {
-        "total_cash": 0,
-        "portfolio_value": 0,
+        "total_cash": round(contributions, 2),
+        "portfolio_value": round(contributions, 2),
         "realized_pnl": 0,
         "unrealized_pnl": 0,
         "total_pnl": 0
     }
-
-    contributions = cash["amount"].sum() if cash is not None and not cash.empty else 0
 
     trades["cf"] = trades.apply(calculate_cash_flow, axis=1)
 
@@ -417,7 +417,7 @@ def compute_metrics(trades, cash):
                 if lot["shares"] == 0:
                     inventory[sym].pop(0)
 
-    portfolio_value = 0
+    holdings_value = 0
     unrealized_pnl = 0
 
     for sym, shares in positions.items():
@@ -432,10 +432,11 @@ def compute_metrics(trades, cash):
         remaining_cost = sum(l["shares"] * l["price"] for l in inventory[sym])
         avg_cost = remaining_cost / shares if shares > 0 else 0
 
-        portfolio_value += value
+        holdings_value += value
         unrealized_pnl += shares * (price - avg_cost)
 
     total_pnl = realized_pnl + unrealized_pnl
+    portfolio_value = cash_balance + holdings_value
 
     return {
         "total_cash": round(cash_balance, 2),

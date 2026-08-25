@@ -97,6 +97,19 @@ def test_index_reflects_trade_and_cash(client):
     assert "Brokerage" in html
 
 
+def test_dashboard_shows_total_portfolio_value_and_return_label(client):
+    add_account(client, "Brokerage")
+    add_cash(client, amount="5000")
+    add_trade(client, shares="10", price="150", fees="1")
+
+    resp = client.get("/")
+    html = resp.get_data(as_text=True)
+
+    assert resp.status_code == 200
+    assert "$4499.00" in html
+    assert "Return: $-500.00" in html
+
+
 def test_position_price_cells_include_ticker_metadata(client):
     add_account(client, "Brokerage")
     add_cash(client, amount="5000")
