@@ -270,6 +270,26 @@ def test_price_endpoint_rejects_undefined_symbol(client):
     assert resp.get_json()["error"] == "A valid symbol is required"
 
 
+def test_equity_chart_includes_daily_cash_balance(monkeypatch):
+    today = main.pd.Timestamp.today().normalize()
+    trades = main.pd.DataFrame(columns=["date", "realized_pnl"])
+    cash = main.pd.DataFrame([{"date": today, "amount": 1000.13}])
+    captured = {}
+
+    class Chart:
+        def to_html(self, full_html):
+            return "chart"
+
+    def capture_line(frame, **kwargs):
+        captured["values"] = frame["value"].copy()
+        return Chart()
+
+    monkeypatch.setattr(main.px, "line", capture_line)
+
+    assert main.equity_chart(trades, cash) == "chart"
+    assert captured["values"].iloc[-1] == 1000.13
+
+
 def test_compute_positions_after_partial_sell(client):
     add_account(client, "Brokerage")
     add_cash(client)

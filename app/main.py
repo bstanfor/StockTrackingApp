@@ -645,15 +645,15 @@ def equity_chart(trades, cash, period="1Y"):
 
 
     df = trades.copy()
-    df["date"] = pd.to_datetime(df["date"])
+    df["date"] = pd.to_datetime(df["date"]).dt.normalize()
 
 
     cash_df = cash.copy()
     if not cash_df.empty:
-        cash_df["date"] = pd.to_datetime(cash_df["date"])
+        cash_df["date"] = pd.to_datetime(cash_df["date"]).dt.normalize()
 
     # ✅ Determine date range
-    today = pd.Timestamp.today()
+    today = pd.Timestamp.today().normalize()
 
     if period == "1M":
         start = today - pd.DateOffset(months=1)
@@ -670,7 +670,7 @@ def equity_chart(trades, cash, period="1Y"):
     # ✅ Combine into timeline
     all_dates = pd.date_range(start=start, end=today, freq="D")
     equity = pd.DataFrame(index=all_dates)
-    equity["value"] = 0
+    equity["value"] = 0.0
 
     # ✅ compute cumulative equity
     running_value = 0
@@ -685,8 +685,6 @@ def equity_chart(trades, cash, period="1Y"):
         running_value += day_cash["amount"].sum() if not cash_df.empty else 0
 
         equity.loc[date, "value"] = running_value
-
-    import plotly.express as px
 
     fig = px.line(
         equity,
