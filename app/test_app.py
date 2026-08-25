@@ -6,10 +6,23 @@ mocked so tests run fully offline and deterministically.
 """
 import os
 import tempfile
+from html.parser import HTMLParser
 
 import pytest
 
 import main
+
+
+class PriceCellParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.symbols = []
+
+    def handle_starttag(self, tag, attrs):
+        attributes = dict(attrs)
+        classes = attributes.get("class", "").split()
+        if tag == "td" and "price" in classes:
+            self.symbols.append(attributes.get("data-symbol"))
 
 
 @pytest.fixture(autouse=True)
@@ -82,7 +95,19 @@ def test_index_reflects_trade_and_cash(client):
     assert resp.status_code == 200
     assert "AAPL" in html
     assert "Brokerage" in html
-    assert 'data-symbol="AAPL"' in html
+
+
+def test_position_price_cells_include_ticker_metadata(client):
+    add_account(client, "Brokerage")
+    add_cash(client, amount="5000")
+    add_trade(client, symbol="AAPL", shares="10", price="150")
+    add_trade(client, symbol="SPCX", shares="5", price="135")
+
+    parser = PriceCellParser()
+    parser.feed(client.get("/").get_data(as_text=True))
+
+    assert sorted(parser.symbols) == ["AAPL", "SPCX"]
+    assert all(symbol and symbol.lower() != "undefined" for symbol in parser.symbols)
 
 
 # ---------------------------
