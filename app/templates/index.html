@@ -314,7 +314,7 @@ button:hover { border-color: var(--blue); color: var(--blue); }
 
 <!-- ✅ Filters -->
 <form method="get" id="accountForm">
-<select id="accountSelect" name="account">
+<select id="accountSelect" name="account" multiple size="5" aria-label="Select one or more accounts">
 {% for acc in accounts %}
 <option value="{{ acc }}" {% if acc in selected_account %}selected{% endif %}>
 {{ account_label(acc, account_details) }}
@@ -322,8 +322,6 @@ button:hover { border-color: var(--blue); color: var(--blue); }
 {% endfor %}
 </select>
 
-<button type="button" onclick="selectAll()">Select All</button>
-<button type="button" onclick="clearSelection()">Clear</button>
 <button type="submit">Apply</button>
 </form>
 

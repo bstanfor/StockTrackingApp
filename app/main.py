@@ -861,7 +861,7 @@ def index():
         account_bal = account_balances(activity),
         allocation_chart=alloc_chart,
         #  ✅ dropdown list
-        accounts= ["All"] + db_accounts,
+        accounts=db_accounts,
         #  ✅ pass selected accounts
         selected_account=selected_accounts,
         account_performance=account_perf,
