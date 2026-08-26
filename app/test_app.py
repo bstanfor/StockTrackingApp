@@ -163,6 +163,24 @@ def test_true_return_counts_starting_cash_as_invested_capital(client):
     assert "-10.0%" in html or "-10.00%" in html
 
 
+def test_true_return_falls_back_to_buy_cost_when_starting_cash_is_trade(client):
+    add_account(client, "B-Vanguard-R")
+    add_trade(
+        client,
+        account="B-Vanguard-R",
+        symbol="CASH",
+        action="STARTINGCASH",
+        shares="0",
+        price="5000",
+        fees="0"
+    )
+    add_trade(client, account="B-Vanguard-R", shares="10", price="150", fees="0")
+
+    html = client.get("/").get_data(as_text=True)
+
+    assert "-10.0%" in html or "-10.00%" in html
+
+
 def test_position_price_cells_include_ticker_metadata(client):
     add_account(client, "Brokerage")
     add_cash(client, amount="5000")

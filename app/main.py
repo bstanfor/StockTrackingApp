@@ -759,6 +759,18 @@ def performance_analytics(trades, cash, period="90D"):
     all_time_withdraw = abs(all_time_cash[all_time_cash["description"] == "WITHDRAWAL"]["amount"].sum()) if not all_time_cash.empty else 0
     invested_capital = all_time_contrib - all_time_withdraw
 
+    # Legacy STARTINGCASH entries may be stored as transactions instead of cash flows.
+    starting_cash_transactions = (
+        trades[trades["type"] == "STARTINGCASH"]["price"].sum()
+        if not trades.empty else 0
+    )
+    if starting_cash_transactions > 0:
+        invested_capital += starting_cash_transactions
+
+    # Use BUY cost as a final fallback so missing funding rows cannot force 0%.
+    if invested_capital <= 0 and not trades.empty:
+        invested_capital = trades[trades["type"] == "BUY"]["trade_amount"].sum()
+
     trades = trades[trades["date"] >= start]
     cash = cash[cash["date"] >= start]
 
