@@ -873,17 +873,9 @@ Portfolio Growth: ${{ analytics.total_pnl }}
 <div class="settings-panel">
 <h2>Settings</h2>
 <p>Workspace preferences</p>
-<h3>Download dataset</h3>
-<p>Download all recorded transactions and cash flows.</p>
-<div class="dataset-downloads">
-<form method="GET" action="/download_dataset/csv">
-<button type="submit">Download CSV</button>
-</form>
-<form method="GET" action="/download_dataset/json">
-<button type="submit">Download JSON</button>
-</form>
-</div>
-<h3>Account numbers</h3>
+<button type="button" onclick="toggleDarkMode()">Toggle dark mode</button>
+<button type="button" onclick="resetWorkspace()">Reset saved view</button>
+<h3>Modify Accounts</h3>
 <form method="POST" action="/add_account">
 <input name="account_name" placeholder="New account name" required>
 <input name="account_number" placeholder="Account # (optional)">
@@ -896,8 +888,16 @@ Portfolio Growth: ${{ analytics.total_pnl }}
 <button type="submit">Save</button>
 </form>
 {% endfor %}
-<button type="button" onclick="toggleDarkMode()">Toggle dark mode</button>
-<button type="button" onclick="resetWorkspace()">Reset saved view</button>
+<h3>Data Management</h3>
+<p>Download all recorded transactions and cash flows.</p>
+<div class="dataset-downloads">
+<form method="GET" action="/download_dataset/csv">
+<button type="submit">Download CSV</button>
+</form>
+<form method="GET" action="/download_dataset/json">
+<button type="submit">Download JSON</button>
+</form>
+</div>
 </div>
 </div>
 
