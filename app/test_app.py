@@ -134,6 +134,35 @@ def test_dashboard_shows_total_portfolio_value_and_return_label(client):
     assert "Return: $-500.00" in html
 
 
+def test_true_return_includes_unrealized_position_pnl(client):
+    add_account(client, "B-Vanguard-R")
+    add_cash(client, account="B-Vanguard-R", amount="5000")
+    add_trade(client, account="B-Vanguard-R", shares="10", price="150", fees="0")
+
+    response = client.get("/")
+    html = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "-10.0%" in html or "-10.00%" in html
+
+
+def test_true_return_counts_starting_cash_as_invested_capital(client):
+    add_account(client, "B-Vanguard-R")
+    add_cash(client, account="B-Vanguard-R", amount="5000")
+    conn = main.get_db_connection()
+    conn.execute(
+        "UPDATE cash_flows SET description='STARTINGCASH' WHERE account=?",
+        ("B-Vanguard-R",)
+    )
+    conn.commit()
+    conn.close()
+    add_trade(client, account="B-Vanguard-R", shares="10", price="150", fees="0")
+
+    html = client.get("/").get_data(as_text=True)
+
+    assert "-10.0%" in html or "-10.00%" in html
+
+
 def test_position_price_cells_include_ticker_metadata(client):
     add_account(client, "Brokerage")
     add_cash(client, amount="5000")

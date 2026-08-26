@@ -746,9 +746,16 @@ def performance_analytics(trades, cash, period="90D"):
     else:
         start = today - pd.Timedelta(days=90)
 
+    # True return uses the complete portfolio state, including unrealized gains.
+    all_time_metrics = compute_metrics(trades.copy(), cash.copy())
+
     # ✅ invested capital to date (all-time, not just this period) is the correct return denominator
     all_time_cash = cash[cash["date"] <= today]
-    all_time_contrib = all_time_cash[all_time_cash["description"] == "CONTRIBUTION"]["amount"].sum() if not all_time_cash.empty else 0
+    funding_descriptions = ["CONTRIBUTION", "STARTINGCASH"]
+    all_time_contrib = (
+        all_time_cash[all_time_cash["description"].isin(funding_descriptions)]["amount"].sum()
+        if not all_time_cash.empty else 0
+    )
     all_time_withdraw = abs(all_time_cash[all_time_cash["description"] == "WITHDRAWAL"]["amount"].sum()) if not all_time_cash.empty else 0
     invested_capital = all_time_contrib - all_time_withdraw
 
@@ -766,7 +773,10 @@ def performance_analytics(trades, cash, period="90D"):
         yearly_div = pd.Series()
 
     # ✅ contributions / withdrawals (within selected period, for display)
-    contrib = cash[cash["description"] == "CONTRIBUTION"]["amount"].sum() if not cash.empty else 0
+    contrib = (
+        cash[cash["description"].isin(funding_descriptions)]["amount"].sum()
+        if not cash.empty else 0
+    )
     withdraw = abs(cash[cash["description"] == "WITHDRAWAL"]["amount"].sum()) if not cash.empty else 0
 
     net_contribution = contrib - withdraw
@@ -774,8 +784,11 @@ def performance_analytics(trades, cash, period="90D"):
     # ✅ pnl
     total_pnl = trades["realized_pnl"].sum() if not trades.empty else 0
 
-    # ✅ true return: growth this period vs total invested capital to date (avoid divide-by-zero)
-    true_return_pct = (total_pnl / invested_capital) * 100 if invested_capital else 0
+    # ✅ true return: total realized + unrealized growth vs invested capital
+    true_return_pct = (
+        all_time_metrics["total_pnl"] / invested_capital * 100
+        if invested_capital else 0
+    )
 
     # ✅ chart
     df = pd.DataFrame({
