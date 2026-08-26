@@ -136,6 +136,23 @@ def test_add_and_delete_account(client):
     assert "TestAcct" not in main.load_accounts()
 
 
+def test_optional_account_number_is_persisted_and_displayed(client):
+    client.post("/add_account", data={
+        "account_name": "Brokerage",
+        "account_number": "4012"
+    })
+
+    assert main.load_account_details()["Brokerage"] == "4012"
+    html = client.get("/").get_data(as_text=True)
+    assert "Brokerage (Acct # 4012)" in html
+
+    client.post("/update_account_number", data={
+        "account_name": "Brokerage",
+        "account_number": ""
+    })
+    assert main.load_account_details()["Brokerage"] is None
+
+
 def test_delete_account_blocked_when_in_use(client):
     add_account(client, "Brokerage")
     add_trade(client, account="Brokerage")

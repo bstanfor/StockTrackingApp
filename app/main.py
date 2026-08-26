@@ -25,9 +25,15 @@ def init_db():
     c.execute("""
     CREATE TABLE IF NOT EXISTS accounts (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT UNIQUE
+        name TEXT UNIQUE,
+        account_number TEXT
    )
     """)
+
+    # Existing databases may have been created before account numbers existed.
+    account_columns = [row[1] for row in c.execute("PRAGMA table_info(accounts)").fetchall()]
+    if "account_number" not in account_columns:
+        c.execute("ALTER TABLE accounts ADD COLUMN account_number TEXT")
 
     c.execute("""
     CREATE TABLE IF NOT EXISTS transactions (
@@ -115,6 +121,21 @@ def load_accounts():
     conn.close()
 
     return df["name"].tolist()
+
+def load_account_details():
+    conn = get_db_connection()
+    rows = conn.execute(
+        "SELECT name, account_number FROM accounts ORDER BY name"
+    ).fetchall()
+    conn.close()
+    return {
+        row["name"]: row["account_number"]
+        for row in rows
+    }
+
+def account_label(account, account_details):
+    account_number = account_details.get(account)
+    return f"{account} (Acct # {account_number})" if account_number else account
 
 # ---------------------------
 # ANALYTICS
@@ -788,6 +809,7 @@ def index():
     
     # ✅ load accounts from DB (NEW)
     db_accounts = load_accounts()
+    account_details = load_account_details()
         
     # ✅ fallback to All
     if not selected_accounts or "All" in selected_accounts:
@@ -812,6 +834,8 @@ def index():
     chart = equity_chart(trades, cash, period="1Y")
     account_positions = compute_positions(trades, cash)
     account_perf = account_performance(trades, cash) # ✅ Account Performance update
+    for performance in account_perf:
+        performance["account_label"] = account_label(performance["account"], account_details)
     
     # analytics function
     period = request.args.get("period", "90D")
@@ -843,6 +867,8 @@ def index():
         equity_chart=chart,
         analytics=analytics,
         selected_period=period,
+        account_details=account_details,
+        account_label=account_label,
         **metrics
     )
 
@@ -917,13 +943,24 @@ def add_account():
 
     try:
         conn.execute(
-            "INSERT INTO accounts(name) VALUES (?)",
-            (request.form["account_name"],)
+            "INSERT INTO accounts(name, account_number) VALUES (?, ?)",
+            (request.form["account_name"], request.form.get("account_number") or None)
         )
         conn.commit()
     except:
         pass  # avoid duplicate crash
 
+    conn.close()
+    return redirect("/")
+
+@app.route("/update_account_number", methods=["POST"])
+def update_account_number():
+    conn = get_db_connection()
+    conn.execute(
+        "UPDATE accounts SET account_number=? WHERE name=?",
+        (request.form.get("account_number") or None, request.form["account_name"])
+    )
+    conn.commit()
     conn.close()
     return redirect("/")
 

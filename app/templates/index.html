@@ -301,7 +301,7 @@ button:hover { border-color: var(--blue); color: var(--blue); }
 <select id="accountSelect" name="account">
 {% for acc in accounts %}
 <option value="{{ acc }}" {% if acc in selected_account %}selected{% endif %}>
-{{ acc }}
+{{ account_label(acc, account_details) }}
 </option>
 {% endfor %}
 </select>
@@ -357,7 +357,7 @@ Return: ${{ "%.2f"|format(total_pnl) }}
 
     <!-- ✅ Account -->
     <td>
-        {{ loop.index }}. {{ acc.account }}
+        {{ loop.index }}. {{ acc.account_label }}
     </td>
 
     <!-- ✅ P&L -->
@@ -477,11 +477,11 @@ Portfolio Growth: ${{ analytics.total_pnl }}
 {% for account_name, acct in account_positions.items() %}
 
 <tr class="account-header">
-    <td colspan="9"><strong>{{ account_name }}</strong></td>
+    <td colspan="9"><strong>{{ account_label(account_name, account_details) }}</strong></td>
 </tr>
 
 <tr class="cash-row static-row">
-    <td data-value="{{ account_name }}">{{ account_name }}</td>
+    <td data-value="{{ account_name }}">{{ account_label(account_name, account_details) }}</td>
     <td data-value="CASH">CASH</td>
     <td>-</td>
     <td>-</td>
@@ -505,7 +505,7 @@ Portfolio Growth: ${{ analytics.total_pnl }}
 {% for p in acct.positions %}
 <tr>
 
-    <td data-value="{{ account_name }}">{{ account_name }}</td>
+    <td data-value="{{ account_name }}">{{ account_label(account_name, account_details) }}</td>
     <td data-value="{{ p.symbol }}"><button class="position-symbol" type="button" onclick="showPositionDetail('{{ account_name|e }}', '{{ p.symbol|e }}')">{{ p.symbol }}</button></td>
 
     <td data-value="{{ p.shares }}">
@@ -566,7 +566,7 @@ Portfolio Growth: ${{ analytics.total_pnl }}
 <div class="workspace-tools" id="activityTools">
 <label>From <input id="dateFrom" type="date" onchange="filterActivity()"></label>
 <label>To <input id="dateTo" type="date" onchange="filterActivity()"></label>
-<label>Account <select id="activityAccount" onchange="filterActivity()"><option value="">All accounts</option>{% for acc in accounts if acc != 'All' %}<option>{{ acc }}</option>{% endfor %}</select></label>
+<label>Account <select id="activityAccount" onchange="filterActivity()"><option value="">All accounts</option>{% for acc in accounts if acc != 'All' %}<option value="{{ acc }}">{{ account_label(acc, account_details) }}</option>{% endfor %}</select></label>
 <label>Symbol <input id="activitySymbol" placeholder="AAPL" oninput="filterActivity()"></label>
 <label>Type <select id="activityType" onchange="filterActivity()"><option value="">All types</option><option>BUY</option><option>SELL</option><option>DIVIDEND</option><option>CONTRIBUTION</option><option>WITHDRAWAL</option></select></label>
 <span class="tool-spacer"></span>
@@ -591,7 +591,7 @@ Portfolio Growth: ${{ analytics.total_pnl }}
 
 <select name="account" required>
 {% for acc in accounts %}
-<option value="{{ acc }}">{{ acc }}</option>
+<option value="{{ acc }}">{{ account_label(acc, account_details) }}</option>
 {% endfor %}
 </select>
 
@@ -635,7 +635,7 @@ Portfolio Growth: ${{ analytics.total_pnl }}
 
 <select name="account" required>
 {% for acc in accounts %}
-<option value="{{ acc }}">{{ acc }}</option>
+<option value="{{ acc }}">{{ account_label(acc, account_details) }}</option>
 {% endfor %}
 </select>
 
@@ -757,7 +757,7 @@ Portfolio Growth: ${{ analytics.total_pnl }}
 </td>
 
 <!-- ✅ ACCOUNT -->
-<td>{{ t.account or "-" }}</td>
+<td>{{ account_label(t.account, account_details) if t.account else "-" }}</td>
 
 <!-- ✅ SYMBOL -->
 <td><b>{{ t.symbol or "-" }}</b></td>
@@ -859,6 +859,19 @@ Portfolio Growth: ${{ analytics.total_pnl }}
 <div class="settings-panel">
 <h2>Settings</h2>
 <p>Workspace preferences</p>
+<h3>Account numbers</h3>
+<form method="POST" action="/add_account">
+<input name="account_name" placeholder="New account name" required>
+<input name="account_number" placeholder="Account # (optional)">
+<button type="submit">Add account</button>
+</form>
+{% for acc in accounts if acc != 'All' %}
+<form method="POST" action="/update_account_number">
+<input type="hidden" name="account_name" value="{{ acc }}">
+<label>{{ acc }} <input name="account_number" value="{{ account_details.get(acc) or '' }}" placeholder="Account # (optional)"></label>
+<button type="submit">Save</button>
+</form>
+{% endfor %}
 <button type="button" onclick="toggleDarkMode()">Toggle dark mode</button>
 <button type="button" onclick="resetWorkspace()">Reset saved view</button>
 </div>
