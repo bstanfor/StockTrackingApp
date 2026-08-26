@@ -1,5 +1,6 @@
 #Python
-from flask import Flask, render_template, request, redirect
+from flask import Flask, render_template, request, redirect, Response
+import json
 import sqlite3
 import pandas as pd
 import plotly.express as px
@@ -919,6 +920,35 @@ def get_price(symbol):
         price = 0
 
     return {"price": float(price)}
+
+@app.route("/download_dataset/<file_format>")
+def download_dataset(file_format):
+    if file_format not in {"csv", "json"}:
+        return {"error": "Supported formats are csv and json"}, 400
+
+    trades, cash = load_data()
+    dataset = {
+        "transactions": trades.to_dict("records"),
+        "cash_flows": cash.to_dict("records")
+    }
+
+    if file_format == "json":
+        content = json.dumps(dataset, default=str, indent=2)
+        return Response(
+            content,
+            mimetype="application/json",
+            headers={"Content-Disposition": "attachment; filename=stock-tracking-dataset.json"}
+        )
+
+    trade_rows = trades.assign(dataset="transactions")
+    cash_rows = cash.assign(dataset="cash_flows")
+    columns = sorted(set(trade_rows.columns) | set(cash_rows.columns))
+    csv_data = pd.concat([trade_rows.reindex(columns=columns), cash_rows.reindex(columns=columns)], ignore_index=True)
+    return Response(
+        csv_data.to_csv(index=False),
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=stock-tracking-dataset.csv"}
+    )
 
 
 @app.route("/delete_account/<name>")

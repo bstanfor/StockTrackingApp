@@ -97,6 +97,30 @@ def test_index_reflects_trade_and_cash(client):
     assert "Brokerage" in html
 
 
+def test_dataset_downloads_include_transactions_and_cash(client):
+    add_account(client, "Brokerage")
+    add_cash(client)
+    add_trade(client)
+
+    json_response = client.get("/download_dataset/json")
+    assert json_response.status_code == 200
+    assert "attachment" in json_response.headers["Content-Disposition"]
+    dataset = json_response.get_json()
+    assert dataset["transactions"][0]["symbol"] == "AAPL"
+    assert dataset["cash_flows"][0]["description"] == "CONTRIBUTION"
+
+    csv_response = client.get("/download_dataset/csv")
+    csv_text = csv_response.get_data(as_text=True)
+    assert csv_response.status_code == 200
+    assert "AAPL" in csv_text
+    assert "CONTRIBUTION" in csv_text
+
+
+def test_dataset_download_rejects_unknown_format(client):
+    response = client.get("/download_dataset/xml")
+    assert response.status_code == 400
+
+
 def test_dashboard_shows_total_portfolio_value_and_return_label(client):
     add_account(client, "Brokerage")
     add_cash(client, amount="5000")

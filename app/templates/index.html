@@ -687,9 +687,6 @@ Portfolio Growth: ${{ analytics.total_pnl }}
 
 
 <div class="table-container virtual-scroll">
-<button onclick="filterType('BUY')">Buy</button>
-<button onclick="filterType('SELL')">Sell</button>
-<button onclick="filterType('DIVIDEND')">Dividend</button>
 <table>
 
 <thead>
@@ -734,6 +731,7 @@ Portfolio Growth: ${{ analytics.total_pnl }}
 {% elif action == 'DIVIDEND' %}row-div
 {% elif action == 'CONTRIBUTION' %}row-cash-in
 {% elif action == 'WITHDRAWAL' %}row-cash-out
+<table>
 {% endif %}
 ">
 
@@ -859,6 +857,14 @@ Portfolio Growth: ${{ analytics.total_pnl }}
 <div class="settings-panel">
 <h2>Settings</h2>
 <p>Workspace preferences</p>
+<h3>Download dataset</h3>
+<p>Download all recorded transactions and cash flows.</p>
+<form method="GET" action="/download_dataset/csv">
+<button type="submit">Download CSV</button>
+</form>
+<form method="GET" action="/download_dataset/json">
+<button type="submit">Download JSON</button>
+</form>
 <h3>Account numbers</h3>
 <form method="POST" action="/add_account">
 <input name="account_name" placeholder="New account name" required>
