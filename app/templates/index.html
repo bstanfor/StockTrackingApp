@@ -218,10 +218,68 @@ tbody tr:hover {
 .neg-fill {
     background: #dc2626;
 }
+
+:root { --navy: #182b3a; --blue: #166b83; --paper: #fff; --line: #d9e1e7; --muted: #667784; --good: #12805c; --bad: #bd4437; }
+* { box-sizing: border-box; }
+body { margin: 0; background: #edf2f4; color: #1b2935; font-family: Arial, sans-serif; }
+.sidebar { position: fixed; inset: 0 auto 0 0; width: 220px; padding: 26px 16px; background: var(--navy); color: white; z-index: 1001; }
+.sidebar h1 { margin: 0 12px 34px; font: 700 24px Georgia, serif; }
+.side-link { display: block; width: 100%; margin: 4px 0; padding: 12px; border: 0; border-radius: 5px; background: transparent; color: #c9d6dd; text-align: left; cursor: pointer; }
+.side-link:hover, .side-link.active { background: #2a5365; color: white; }
+.app-main { min-height: 100vh; margin-left: 220px; }
+.header { position: sticky; top: 0; z-index: 1000; padding: 18px 28px; background: rgba(255,255,255,.96); border-bottom: 1px solid var(--line); }
+.header h1 { margin: 0 0 14px; font: 700 30px Georgia, serif; }
+.tab-bar { display: none; }
+body > button, body > form, body > #selectedTags, body > hr, body > .tab { width: auto; margin-left: 28px; margin-right: 28px; }
+.app-main > button, .app-main > form, .app-main > #selectedTags, .app-main > hr, .app-main > .tab { margin-left: 28px; margin-right: 28px; }
+body > button { margin-top: 18px; }
+.tab { padding: 22px 0 50px; }
+button, input, select { border: 1px solid #cbd6dd; border-radius: 5px; padding: 8px 10px; background: var(--paper); }
+button { cursor: pointer; font-weight: 700; }
+button:hover { border-color: var(--blue); color: var(--blue); }
+#accountForm { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+#accountSelect { min-width: 190px; }
+.workspace-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; padding: 12px; margin-bottom: 14px; background: var(--paper); border: 1px solid var(--line); border-radius: 6px; }
+.workspace-tools label { display: grid; gap: 4px; color: var(--muted); font-size: 11px; font-weight: 700; text-transform: uppercase; }
+.workspace-tools input, .workspace-tools select { min-width: 130px; }
+.tool-spacer { flex: 1; }
+.column-menu { position: relative; }
+.column-menu details { position: absolute; right: 0; top: 38px; z-index: 20; min-width: 180px; padding: 10px; background: var(--paper); border: 1px solid var(--line); box-shadow: 0 8px 20px #0002; }
+.column-menu label { display: block; padding: 5px; font-size: 13px; }
+.position-symbol { color: var(--blue); text-decoration: underline; cursor: pointer; font-weight: 700; }
+.detail-dialog { width: min(680px, calc(100% - 32px)); border: 0; border-radius: 8px; padding: 24px; box-shadow: 0 20px 50px #0004; }
+.detail-dialog::backdrop { background: #12202a99; }
+.detail-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 16px 0; }
+.detail-stat { padding: 12px; background: #f1f5f7; border-radius: 5px; }
+.detail-stat small { display: block; color: var(--muted); }
+.virtual-scroll { max-height: 520px; overflow: auto; }
+.virtual-scroll table { min-width: 1180px; }
+.virtual-scroll tbody tr { height: 42px; }
+.inline-input { width: 100%; min-width: 70px; padding: 5px; }
+.drawer-toggle { float: right; background: var(--blue); color: white; border-color: var(--blue); }
+#activityDrawer { position: fixed; top: 0; right: 0; bottom: 0; z-index: 1100; width: min(430px, 100%); padding: 24px; overflow-y: auto; background: var(--paper); box-shadow: -12px 0 30px #0003; transform: translateX(105%); transition: transform .25s ease; }
+#activityDrawer.open { transform: translateX(0); }
+#drawerBackdrop { display: none; position: fixed; inset: 0; z-index: 1090; background: #12202a66; }
+#drawerBackdrop.open { display: block; }
+#activityDrawer form { display: grid; gap: 9px; margin-bottom: 24px; }
+.settings-panel { max-width: 680px; padding: 20px; background: var(--paper); border: 1px solid var(--line); border-radius: 6px; }
+@media (max-width: 760px) { .sidebar { position: static; width: 100%; padding: 12px; } .sidebar h1 { display: inline; margin: 0 18px 0 4px; } .sidebar nav { display: inline-flex; gap: 4px; } .side-link { width: auto; padding: 8px; } .app-main { margin-left: 0; } .header { padding: 14px 12px; } body > button, body > form, body > #selectedTags, body > hr, body > .tab { margin-left: 12px; margin-right: 12px; } .detail-grid { grid-template-columns: 1fr; } }
 </style>
 </head>
 
 <body>
+
+<aside class="sidebar" id="sidebar">
+<h1>Ledger</h1>
+<nav>
+<button class="side-link active" data-tab="dashboard" onclick="showTab('dashboard')">Dashboard</button>
+<button class="side-link" data-tab="positions" onclick="showTab('positions')">Positions</button>
+<button class="side-link" data-tab="activity" onclick="showTab('activity')">Activity</button>
+<button class="side-link" data-tab="settings" onclick="showTab('settings')">Settings</button>
+</nav>
+</aside>
+
+<main class="app-main">
 
 <div class="header">
 
@@ -240,7 +298,7 @@ tbody tr:hover {
 
 <!-- ✅ Filters -->
 <form method="get" id="accountForm">
-<select id="accountSelect" name="account" multiple size="4">
+<select id="accountSelect" name="account">
 {% for acc in accounts %}
 <option value="{{ acc }}" {% if acc in selected_account %}selected{% endif %}>
 {{ acc }}
@@ -448,7 +506,7 @@ Portfolio Growth: ${{ analytics.total_pnl }}
 <tr>
 
     <td data-value="{{ account_name }}">{{ account_name }}</td>
-    <td data-value="{{ p.symbol }}">{{ p.symbol }}</td>
+    <td data-value="{{ p.symbol }}"><button class="position-symbol" type="button" onclick="showPositionDetail('{{ account_name|e }}', '{{ p.symbol|e }}')">{{ p.symbol }}</button></td>
 
     <td data-value="{{ p.shares }}">
         {{ "%.2f"|format(p.shares) }}
@@ -501,6 +559,30 @@ Portfolio Growth: ${{ analytics.total_pnl }}
 
 <!-- ✅ ACTIVITY -->					 
 <div id="activityTab" class="tab">
+
+<button class="drawer-toggle" type="button" onclick="toggleActivityDrawer(true)">Add activity</button>
+<h2>Activity</h2>
+
+<div class="workspace-tools" id="activityTools">
+<label>From <input id="dateFrom" type="date" onchange="filterActivity()"></label>
+<label>To <input id="dateTo" type="date" onchange="filterActivity()"></label>
+<label>Account <select id="activityAccount" onchange="filterActivity()"><option value="">All accounts</option>{% for acc in accounts if acc != 'All' %}<option>{{ acc }}</option>{% endfor %}</select></label>
+<label>Symbol <input id="activitySymbol" placeholder="AAPL" oninput="filterActivity()"></label>
+<label>Type <select id="activityType" onchange="filterActivity()"><option value="">All types</option><option>BUY</option><option>SELL</option><option>DIVIDEND</option><option>CONTRIBUTION</option><option>WITHDRAWAL</option></select></label>
+<span class="tool-spacer"></span>
+<button type="button" onclick="exportActivity('csv')">Export CSV</button>
+<button type="button" onclick="exportActivity('json')">Export JSON</button>
+<div class="column-menu"><details><summary>Columns</summary>
+<label><input type="checkbox" data-column="0" checked onchange="toggleColumn(this)"> Lot</label>
+<label><input type="checkbox" data-column="1" checked onchange="toggleColumn(this)"> Date</label>
+<label><input type="checkbox" data-column="2" checked onchange="toggleColumn(this)"> Account</label>
+<label><input type="checkbox" data-column="3" checked onchange="toggleColumn(this)"> Symbol</label>
+<label><input type="checkbox" data-column="4" checked onchange="toggleColumn(this)"> Action</label>
+<label><input type="checkbox" data-column="10" checked onchange="toggleColumn(this)"> P&L</label>
+</details></div>
+</div>
+
+<div id="positionDetail"></div>
 
 <!-- ✅ KEEP: Add Activity -->
 <h3>Add Activity</h3>
@@ -604,7 +686,7 @@ Portfolio Growth: ${{ analytics.total_pnl }}
 </h3>
 
 
-<div class="table-container">
+<div class="table-container virtual-scroll">
 <button onclick="filterType('BUY')">Buy</button>
 <button onclick="filterType('SELL')">Sell</button>
 <button onclick="filterType('DIVIDEND')">Dividend</button>
@@ -747,7 +829,7 @@ Portfolio Growth: ${{ analytics.total_pnl }}
 
   {% if t.source == "trade" %}
     {% if t.id %}
-      <button onclick="editRow('{{ t.id }}')">Edit</button>
+    <button onclick="inlineEdit(this, '{{ t.id }}')">Edit</button>
       <button onclick="deleteRow('{{ t.id }}')">Delete</button>
     {% else %}
       <!-- fallback -->
@@ -773,20 +855,133 @@ Portfolio Growth: ${{ analytics.total_pnl }}
 </table>
 </div>
 
+<div id="settingsTab" class="tab">
+<div class="settings-panel">
+<h2>Settings</h2>
+<p>Workspace preferences</p>
+<button type="button" onclick="toggleDarkMode()">Toggle dark mode</button>
+<button type="button" onclick="resetWorkspace()">Reset saved view</button>
+</div>
 </div>
 
+<div id="drawerBackdrop" onclick="toggleActivityDrawer(false)"></div>
+<aside id="activityDrawer" aria-label="Activity entry panel">
+<button type="button" onclick="toggleActivityDrawer(false)">Close</button>
+<h2>Add activity</h2>
+</aside>
+
+<dialog id="positionDialog" class="detail-dialog">
+<div id="positionDialogContent"></div>
+<button type="button" onclick="document.getElementById('positionDialog').close()">Close</button>
+</dialog>
+
+ </main>
 <script>
 function showTab(tab){
-["dashboard","positions","activity"].forEach(t=>{
+ ["dashboard","positions","activity","settings"].forEach(t=>{
 document.getElementById(t+"Tab").style.display="none";
-document.getElementById("btn-"+t).classList.remove("active");
+ const oldButton = document.getElementById("btn-"+t);
+ if (oldButton) oldButton.classList.remove("active");
 });
 
 document.getElementById(tab+"Tab").style.display="block";
-document.getElementById("btn-"+tab).classList.add("active");
+const tabButton = document.getElementById("btn-"+tab);
+if (tabButton) tabButton.classList.add("active");
+document.querySelectorAll(".side-link").forEach(button => button.classList.toggle("active", button.dataset.tab === tab));
 
 localStorage.setItem("tab",tab);
 }
+
+function toggleActivityDrawer(open) {
+    const drawer = document.getElementById("activityDrawer");
+    const backdrop = document.getElementById("drawerBackdrop");
+    drawer.classList.toggle("open", open);
+    backdrop.classList.toggle("open", open);
+    document.body.style.overflow = open ? "hidden" : "";
+}
+
+function filterActivity() {
+    const from = document.getElementById("dateFrom").value;
+    const to = document.getElementById("dateTo").value;
+    const account = document.getElementById("activityAccount").value.toLowerCase();
+    const symbol = document.getElementById("activitySymbol").value.toLowerCase();
+    const type = document.getElementById("activityType").value.toLowerCase();
+    document.querySelectorAll("#activityTab tbody tr").forEach(row => {
+        const cells = row.children;
+        const date = cells[1]?.dataset.date || "";
+        const matches = (!from || date >= from) && (!to || date <= to) &&
+            (!account || cells[2]?.innerText.toLowerCase().includes(account)) &&
+            (!symbol || cells[3]?.innerText.toLowerCase().includes(symbol)) &&
+            (!type || cells[4]?.innerText.toLowerCase() === type);
+        row.hidden = !matches;
+    });
+    updateActivityWindow();
+}
+
+function updateActivityWindow() {
+    const scroller = document.querySelector("#activityTab .virtual-scroll");
+    const rows = [...document.querySelectorAll("#activityTab tbody tr")];
+    if (!scroller || rows.length < 100) return;
+    const first = Math.max(0, Math.floor(scroller.scrollTop / 42) - 15);
+    const last = first + 100;
+    rows.forEach((row, index) => { row.style.visibility = index >= first && index <= last ? "visible" : "hidden"; });
+}
+
+function toggleColumn(control) {
+    const column = Number(control.dataset.column);
+    document.querySelectorAll("#activityTab table tr").forEach(row => {
+        if (row.children[column]) row.children[column].style.display = control.checked ? "" : "none";
+    });
+}
+
+function exportActivity(format) {
+    const rows = [...document.querySelectorAll("#activityTab tbody tr:not([hidden])")];
+    const data = rows.map(row => [...row.children].map(cell => cell.innerText.trim()));
+    const headers = [...document.querySelectorAll("#activityTab thead th")].map(cell => cell.innerText.trim());
+    let content, mime, extension;
+    if (format === "json") { content = JSON.stringify(data.map(row => Object.fromEntries(headers.map((key, i) => [key, row[i]]))), null, 2); mime = "application/json"; extension = "json"; }
+    else { content = [headers, ...data].map(row => row.map(value => `"${value.replaceAll('"', '""')}"`).join(",")).join("\n"); mime = "text/csv"; extension = "csv"; }
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(new Blob([content], {type: mime}));
+    link.download = `activity.${extension}`; link.click(); URL.revokeObjectURL(link.href);
+}
+
+function resetWorkspace() { localStorage.removeItem("tab"); localStorage.removeItem("dark"); location.reload(); }
+
+async function showPositionDetail(account, symbol) {
+    const dialog = document.getElementById("positionDialog");
+    const content = document.getElementById("positionDialogContent");
+    content.innerHTML = "Loading position...";
+    dialog.showModal();
+    const response = await fetch(`/position/${encodeURIComponent(account)}/${encodeURIComponent(symbol)}`);
+    const data = await response.json();
+    const position = data.position || {shares: 0, value: 0, cost_basis: 0, unrealized_pnl: 0};
+    content.innerHTML = `<h2>${data.symbol} <small>${data.account}</small></h2>
+        <div class="detail-grid"><div class="detail-stat"><small>Shares</small>${position.shares}</div><div class="detail-stat"><small>Value</small>$${Number(position.value).toFixed(2)}</div><div class="detail-stat"><small>Cost basis</small>$${Number(position.cost_basis).toFixed(2)}</div></div>
+        <h3>Open lots</h3><ul>${data.lots.map(lot => `<li>Lot ${lot.lot_id}: ${lot.shares_remaining} shares @ $${Number(lot.price).toFixed(2)}</li>`).join("") || "<li>No open lots</li>"}</ul>
+        <h3>Transaction history</h3><ul>${data.history.map(item => `<li>${item.date}: ${item.type} ${item.shares || ""} @ $${item.price || "0"}</li>`).join("") || "<li>No history</li>"}</ul>`;
+}
+
+function inlineEdit(button, id) {
+    const row = button.closest("tr");
+    const fields = {1: "date", 2: "account", 3: "stock", 5: "shares", 6: "price", 8: "fees"};
+    Object.entries(fields).forEach(([index, name]) => {
+        const cell = row.children[index];
+        const value = cell.innerText.replace("$", "").trim();
+        cell.innerHTML = `<input class="inline-input" name="${name}" value="${value === "-" ? "" : value}">`;
+    });
+    button.textContent = "Save";
+    button.onclick = () => saveInlineEdit(row, id, button);
+}
+
+function saveInlineEdit(row, id, button) {
+    const form = new FormData();
+    row.querySelectorAll("input").forEach(input => form.append(input.name, input.value));
+    form.append("action", row.children[4].innerText.trim()); form.append("lot", row.children[0].innerText.trim() || "0");
+    fetch(`/update/${id}`, {method: "POST", body: form}).then(response => { if (response.ok) location.reload(); else alert("Unable to save transaction"); });
+}
+
+document.addEventListener("keydown", event => { if (event.key === "Escape") toggleActivityDrawer(false); });
 
 let lastSortCol = null;
 
@@ -943,6 +1138,10 @@ localStorage.setItem("dark",document.body.classList.contains("dark"));
 window.onload=()=>{
     showTab(localStorage.getItem("tab")||"dashboard");
 
+    document.querySelectorAll("#activityTab > h3, #activityTab > form[action]").forEach(node => {
+        document.getElementById("activityDrawer").appendChild(node);
+    });
+
     // ✅ default sort by Date DESC on Activity
     let dateHeader = document.querySelector("#activityTab th");
     if(dateHeader) {
@@ -952,6 +1151,10 @@ window.onload=()=>{
 
     if(localStorage.getItem("dark")==="true")
         document.body.classList.add("dark");
+
+    const activityScroller = document.querySelector("#activityTab .virtual-scroll");
+    if (activityScroller) activityScroller.addEventListener("scroll", updateActivityWindow);
+    updateActivityWindow();
 };
 
 function toggleGroup(header){
@@ -985,15 +1188,10 @@ async function loadLots() {
     });
 }
 
-function editRow(id) {
-    if (!id) return;
-    window.location.href = `/edit/${id}`;
-}
-
 function deleteRow(id) {
     if (!id) return;
 
-    if (!confirm("Delete this trade?")) return;
+    if (!window.confirm("Delete this trade permanently?")) return;
 
     fetch(`/delete/${id}`)
         .then(() => location.reload());
@@ -1002,7 +1200,7 @@ function deleteRow(id) {
 function deleteCash(id) {
     if (!id) return;
 
-    if (confirm("Are you sure you want to delete this cash transaction?")) {
+    if (window.confirm("Delete this cash transaction permanently?")) {
         window.location.href = `/delete_cash/${id}`;
     }
 }

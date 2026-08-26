@@ -855,6 +855,32 @@ def lots(account, symbol):
 
     return {"lots": lots}
 
+@app.route("/position/<account>/<symbol>")
+def position_detail(account, symbol):
+    trades, cash = load_data()
+    trades = enrich_trades(trades)
+    symbol = symbol.strip().upper()
+    account_trades = trades[
+        (trades["account"] == account) &
+        (trades["symbol"].str.upper() == symbol)
+    ] if not trades.empty else trades
+    position = next(
+        (item for item in compute_positions(trades, cash).get(account, {}).get("positions", [])
+         if item["symbol"].upper() == symbol),
+        None
+    )
+    return {
+        "account": account,
+        "symbol": symbol,
+        "position": position,
+        "lots": get_open_lots(trades, account, symbol),
+        "history": [
+            {key: (value.isoformat() if hasattr(value, "isoformat") else value)
+             for key, value in row.items()}
+            for row in account_trades.to_dict("records")
+        ]
+    }
+
 @app.route("/price/<symbol>")
 def get_price(symbol):
     symbol = symbol.strip().upper()

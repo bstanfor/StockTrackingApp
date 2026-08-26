@@ -268,6 +268,19 @@ def test_lots_endpoint_returns_open_lot(client):
     assert data["lots"][0]["shares_remaining"] == 10
 
 
+def test_position_detail_returns_lots_and_history(client):
+    add_account(client, "Brokerage")
+    add_trade(client, account="Brokerage", symbol="AAPL", action="BUY", shares="10", price="150")
+
+    resp = client.get("/position/Brokerage/AAPL")
+    data = resp.get_json()
+
+    assert resp.status_code == 200
+    assert data["position"]["symbol"] == "AAPL"
+    assert data["lots"][0]["shares_remaining"] == 10
+    assert data["history"][0]["type"] == "BUY"
+
+
 def test_price_endpoint_returns_mocked_price(client):
     resp = client.get("/price/AAPL")
     data = resp.get_json()
