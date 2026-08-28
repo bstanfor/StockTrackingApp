@@ -592,6 +592,7 @@ def compute_positions(trades, cash):
         # -------------------------
         account_positions = []
         total_value = cash_val
+        has_fdrxx_cash = any(is_fdrxx_cash(symbol) for symbol in positions)
 
         for sym, shares in positions.items():
             if shares <= 0:
@@ -635,7 +636,8 @@ def compute_positions(trades, cash):
         result[acc] = {
             "positions": account_positions,
             "cash": round(cash_val, 2),  # ✅ FIXED CASH
-            "total_value": round(total_value, 2)
+            "total_value": round(total_value, 2),
+            "cash_symbol": "FDRXX (Cash)" if has_fdrxx_cash else "CASH",
         }
 
     # -------------------------
@@ -1064,6 +1066,11 @@ def equity_chart(trades, cash, period="1Y", start_date=None, end_date=None):
 
     df = df[(df["date"] >= start) & (df["date"] < end)]
     cash_df = cash_df[(cash_df["date"] >= start) & (cash_df["date"] < end)]
+    core_cash_df = df[df.apply(is_legacy_core_cash_transaction, axis=1)].copy()
+    if not core_cash_df.empty:
+        core_cash_df["contribution"] = pd.to_numeric(
+            core_cash_df["source_amount"], errors="coerce"
+        ).abs().fillna(0)
 
     # ✅ Combine into timeline
     all_dates = pd.date_range(start=start, end=today, freq="D")
@@ -1081,6 +1088,10 @@ def equity_chart(trades, cash, period="1Y", start_date=None, end_date=None):
         # cash
         day_cash = cash_df[cash_df["date"] == date]
         running_value += day_cash["amount"].sum() if not cash_df.empty else 0
+
+        if not core_cash_df.empty:
+            day_core_cash = core_cash_df[core_cash_df["date"] == date]
+            running_value += day_core_cash["contribution"].sum()
 
         equity.loc[date, "value"] = running_value
 

@@ -287,6 +287,7 @@ def test_all_accounts_report_fdrxx_shares_as_cash(client, monkeypatch):
 
     assert account["cash"] == 1000.0
     assert account["positions"] == []
+    assert account["cash_symbol"] == "FDRXX (Cash)"
     assert metrics["total_cash"] == 1000.0
 
 
@@ -719,6 +720,38 @@ def test_equity_chart_includes_daily_cash_balance(monkeypatch):
 
     assert main.equity_chart(trades, cash) == "chart"
     assert captured["values"].iloc[-1] == 1000.13
+
+
+def test_equity_chart_includes_legacy_fdrxx_contribution(monkeypatch):
+    today = main.pd.Timestamp.today().normalize()
+    trades = main.pd.DataFrame([{
+        "id": 1,
+        "account": "Fidelity Roth",
+        "date": today,
+        "symbol": "FDRXX",
+        "type": "BUY",
+        "shares": 870.22,
+        "price": 1.0,
+        "fees": 0.0,
+        "realized_pnl": 0.0,
+        "fidelity_action": "PURCHASE INTO CORE ACCOUNT FIDELITY GOVERNMENT CASH RESERVES (FDRXX) (Cash)",
+        "source_amount": -870.22,
+    }])
+    cash = main.pd.DataFrame(columns=["date", "amount"])
+    captured = {}
+
+    class Chart:
+        def to_html(self, full_html):
+            return "chart"
+
+    def capture_line(frame, **kwargs):
+        captured["values"] = frame["value"].copy()
+        return Chart()
+
+    monkeypatch.setattr(main.px, "line", capture_line)
+
+    assert main.equity_chart(trades, cash) == "chart"
+    assert captured["values"].iloc[-1] == 870.22
 
 
 def test_compute_positions_after_partial_sell(client):
