@@ -358,6 +358,12 @@ def test_dashboard_counts_legacy_fidelity_core_cash_buys_as_contributions(client
 
     assert analytics["net_contributions"] == 681.04
 
+    activity = main.build_activity(trades, cash)
+    core_cash_row = activity[0]
+    assert core_cash_row["action"] == "CONTRIBUTION"
+    assert core_cash_row["trade_amount"] == 681.04
+    assert core_cash_row["net_cash_flow"] == 681.04
+
 
 def test_realized_pnl_uses_same_day_trade_order_and_account_scope(client):
     add_account(client, "BrokerageLink")

@@ -807,8 +807,19 @@ def build_activity(trades, cash, dividends=None):
         lot_id = t.get("lot_id", "")
 
         account = t.get("account", "default")
+        action = t["type"]
 
-        if t["type"] == "BUY":
+        if is_legacy_core_cash_transaction(t):
+            action = "CONTRIBUTION"
+            trade_amount = abs(t.get("source_amount", 0) or 0)
+            shares = 0
+            price = 0
+            fees = 0
+            net_cash = trade_amount
+            pl_dollar = 0
+            pl_percent = 0
+
+        elif t["type"] == "BUY":
             net_cash = -(trade_amount + fees)
             pl_dollar = 0
             pl_percent = 0
@@ -841,7 +852,7 @@ def build_activity(trades, cash, dividends=None):
             "account": account,             # ✅ multi-account restored
             "account_number": t.get("account_number", ""),
             "symbol": t.get("symbol", ""),
-            "action": t["type"],
+            "action": action,
             "description": t.get("description", ""),
             "fidelity_action": t.get("fidelity_action", ""),
             "fidelity_type": t.get("fidelity_type", ""),
