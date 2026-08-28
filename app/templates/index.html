@@ -919,6 +919,9 @@ Portfolio Growth: ${{ analytics.total_pnl }}
 <label>{{ acc }} <input name="account_number" value="{{ account_details.get(acc) or '' }}" placeholder="Account # (optional)"></label>
 <button type="submit">Save</button>
 </form>
+<form method="POST" action="{{ url_for('delete_account', name=acc) }}" onsubmit="return confirm('Delete {{ acc|e }} and all associated transactions, cash flows, and dividends?');">
+<button type="submit">Delete {{ acc }}</button>
+</form>
 {% endfor %}
 <h3>Data Management</h3>
 <p>Download all recorded transactions and cash flows.</p>

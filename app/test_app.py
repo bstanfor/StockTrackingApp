@@ -324,7 +324,7 @@ def test_add_and_delete_account(client):
     resp = client.get("/")
     assert "TestAcct" in resp.get_data(as_text=True)
 
-    client.get("/delete_account/TestAcct", follow_redirects=True)
+    client.post("/delete_account/TestAcct", follow_redirects=True)
     assert "TestAcct" not in main.load_accounts()
 
 
@@ -345,13 +345,37 @@ def test_optional_account_number_is_persisted_and_displayed(client):
     assert main.load_account_details()["Brokerage"] is None
 
 
-def test_delete_account_blocked_when_in_use(client):
+def test_delete_account_removes_all_associated_data(client):
     add_account(client, "Brokerage")
     add_trade(client, account="Brokerage")
+    add_cash(client, account="Brokerage")
+    conn = main.get_db_connection()
+    conn.execute(
+        """INSERT INTO dividends(account, account_number, date, symbol, quantity, amount,
+                   description, type) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        ("Brokerage", "4012", "2026-01-02", "FUND", 0, 10, "Fund dividend", "Distributions"),
+    )
+    conn.commit()
+    conn.close()
 
-    client.get("/delete_account/Brokerage", follow_redirects=True)
+    response = client.post("/delete_account/Brokerage", follow_redirects=True)
 
-    assert "Brokerage" in main.load_accounts()
+    assert response.status_code == 200
+    assert "Brokerage" not in main.load_accounts()
+    conn = main.get_db_connection()
+    assert conn.execute("SELECT COUNT(*) FROM transactions WHERE account=?", ("Brokerage",)).fetchone()[0] == 0
+    assert conn.execute("SELECT COUNT(*) FROM cash_flows WHERE account=?", ("Brokerage",)).fetchone()[0] == 0
+    assert conn.execute("SELECT COUNT(*) FROM dividends WHERE account=?", ("Brokerage",)).fetchone()[0] == 0
+    conn.close()
+
+
+def test_settings_shows_confirmed_account_delete_controls(client):
+    add_account(client, "Brokerage")
+
+    html = client.get("/").get_data(as_text=True)
+
+    assert 'action="/delete_account/Brokerage"' in html
+    assert "all associated transactions, cash flows, and dividends" in html
 
 
 def test_rename_account_updates_related_records(client):

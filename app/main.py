@@ -1240,18 +1240,20 @@ def download_dataset(file_format):
     )
 
 
-@app.route("/delete_account/<name>")
+@app.route("/delete_account/<name>", methods=["POST"])
 def delete_account(name):
     conn = get_db_connection()
 
-    # ✅ prevent deleting accounts in use
-    trades = conn.execute(
-        "SELECT COUNT(*) FROM transactions WHERE account=?", (name,)
-    ).fetchone()[0]
-
-    if trades == 0:
+    try:
+        conn.execute("BEGIN")
+        conn.execute("DELETE FROM transactions WHERE account=?", (name,))
+        conn.execute("DELETE FROM cash_flows WHERE account=?", (name,))
+        conn.execute("DELETE FROM dividends WHERE account=?", (name,))
         conn.execute("DELETE FROM accounts WHERE name=?", (name,))
         conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
 
     conn.close()
     return redirect("/")
