@@ -969,7 +969,7 @@ def account_performance(trades, cash): # ✅ Account Performance Dashboard
 
     return results
 
-def equity_chart(trades, cash, period="1Y"):
+def equity_chart(trades, cash, period="1Y", start_date=None, end_date=None):
     if trades.empty and cash.empty:
         return ""
 
@@ -985,17 +985,28 @@ def equity_chart(trades, cash, period="1Y"):
     # ✅ Determine date range
     today = pd.Timestamp.today().normalize()
 
-    if period == "1M":
+    if period == "CUSTOM" and start_date:
+        start = pd.to_datetime(start_date, errors="coerce")
+        if pd.isna(start):
+            start = today - pd.DateOffset(years=1)
+    elif period == "1M":
         start = today - pd.DateOffset(months=1)
     elif period == "YTD":
         start = pd.Timestamp(year=today.year, month=1, day=1)
     elif period == "3Y":
         start = today - pd.DateOffset(years=3)
+    elif period == "YTD":
+        start = pd.Timestamp(year=today.year, month=1, day=1)
     else:  # default 1Y
         start = today - pd.DateOffset(years=1)
 
-    df = df[df["date"] >= start]
-    cash_df = cash_df[cash_df["date"] >= start]
+    end = pd.to_datetime(end_date, errors="coerce") if end_date else today
+    if pd.isna(end):
+        end = today
+    end = end.normalize() + pd.Timedelta(days=1)
+
+    df = df[(df["date"] >= start) & (df["date"] < end)]
+    cash_df = cash_df[(cash_df["date"] >= start) & (cash_df["date"] < end)]
 
     # ✅ Combine into timeline
     all_dates = pd.date_range(start=start, end=today, freq="D")
@@ -1025,7 +1036,8 @@ def equity_chart(trades, cash, period="1Y"):
 
     return fig.to_html(full_html=False)
 
-def performance_analytics(trades, cash, period="90D", dividends=None):
+def performance_analytics(trades, cash, period="1Y", dividends=None,
+                           start_date=None, end_date=None):
 
     dividends = dividends if dividends is not None else pd.DataFrame()
 
@@ -1043,7 +1055,11 @@ def performance_analytics(trades, cash, period="90D", dividends=None):
     today = pd.Timestamp.today()
 
     # ✅ timeframe selection
-    if period == "30D":
+    if period == "CUSTOM" and start_date:
+        start = pd.to_datetime(start_date, errors="coerce")
+        if pd.isna(start):
+            start = today - pd.DateOffset(years=1)
+    elif period == "30D":
         start = today - pd.Timedelta(days=30)
     elif period == "60D":
         start = today - pd.Timedelta(days=60)
@@ -1053,8 +1069,15 @@ def performance_analytics(trades, cash, period="90D", dividends=None):
         start = today - pd.DateOffset(months=3)
     elif period == "Y":
         start = today - pd.DateOffset(years=1)
+    elif period == "YTD":
+        start = pd.Timestamp(year=today.year, month=1, day=1)
     else:
-        start = today - pd.Timedelta(days=90)
+        start = today - pd.DateOffset(years=1)
+
+    end = pd.to_datetime(end_date, errors="coerce") if end_date else today
+    if pd.isna(end):
+        end = today
+    end = end.normalize() + pd.Timedelta(days=1)
 
     # True return uses the complete portfolio state, including unrealized gains.
     all_time_metrics = compute_metrics(trades.copy(), cash.copy())
@@ -1080,11 +1103,11 @@ def performance_analytics(trades, cash, period="90D", dividends=None):
     if invested_capital <= 0 and not trades.empty:
         invested_capital = trades[trades["type"] == "BUY"]["trade_amount"].sum()
 
-    trades = trades[trades["date"] >= start]
-    cash = cash[cash["date"] >= start]
+    trades = trades[(trades["date"] >= start) & (trades["date"] < end)]
+    cash = cash[(cash["date"] >= start) & (cash["date"] < end)]
 
     if not dividends.empty:
-        dividends = dividends[dividends["date"] >= start]
+        dividends = dividends[(dividends["date"] >= start) & (dividends["date"] < end)]
         monthly_div = dividends.groupby(dividends["date"].dt.to_period("M"))["amount"].sum()
         yearly_div = dividends.groupby(dividends["date"].dt.to_period("Y"))["amount"].sum()
         total_dividends = dividends["amount"].sum()
@@ -1170,16 +1193,21 @@ def index():
     metrics = compute_metrics(trades, cash)
     activity = build_activity(trades, cash, dividends)
     account_bal = account_balances(activity)
-    period = request.args.get("period", "1Y")
-    chart = equity_chart(trades, cash, period="1Y")
+    period = request.args.get("period", "1Y").upper()
+    if period not in {"30D", "60D", "90D", "Q", "Y", "YTD", "CUSTOM"}:
+        period = "1Y"
+    start_date = request.args.get("start_date", "")
+    end_date = request.args.get("end_date", "")
+    chart = equity_chart(trades, cash, period=period, start_date=start_date, end_date=end_date)
     account_positions = compute_positions(trades, cash)
     account_perf = account_performance(trades, cash) # ✅ Account Performance update
     for performance in account_perf:
         performance["account_label"] = account_label(performance["account"], account_details)
     
     # analytics function
-    period = request.args.get("period", "90D")
-    analytics = performance_analytics(trades, cash, period, dividends)
+    analytics = performance_analytics(
+        trades, cash, period, dividends, start_date, end_date
+    )
 
 
     # ✅ allocation chart (with cash)    
@@ -1204,6 +1232,8 @@ def index():
         accounts=db_accounts,
         #  ✅ pass selected accounts
         selected_account=selected_accounts,
+        start_date=start_date,
+        end_date=end_date,
         account_performance=account_perf,
         equity_chart=chart,
         analytics=analytics,

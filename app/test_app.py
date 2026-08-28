@@ -273,6 +273,45 @@ def test_dashboard_analytics_normalizes_contribution_labels_and_totals_dividends
     assert analytics["total_dividends"] == 12.50
 
 
+def test_dashboard_preserves_period_when_account_filter_changes(client):
+    add_account(client, "401K")
+
+    html = client.get("/?account=401K&period=YTD").get_data(as_text=True)
+
+    assert 'name="period" value="YTD"' in html
+    assert "Year to Date" in html
+    assert 'name="account" value="401K"' in html
+
+
+def test_dashboard_custom_date_range_limits_contributions_and_dividends(client):
+    add_account(client, "401K")
+    add_cash(client, account="401K", date="2026-01-15", amount="1000")
+    add_cash(client, account="401K", date="2026-06-15", amount="250")
+
+    conn = main.get_db_connection()
+    conn.execute(
+        """INSERT INTO dividends(account, date, symbol, quantity, amount, description, type)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        ("401K", "2026-01-20", "FUND", 0, 10, "Included", "Distributions"),
+    )
+    conn.execute(
+        """INSERT INTO dividends(account, date, symbol, quantity, amount, description, type)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        ("401K", "2026-06-20", "FUND", 0, 20, "Excluded", "Distributions"),
+    )
+    conn.commit()
+    conn.close()
+
+    trades, cash = main.load_data()
+    dividends = main.load_dividends()
+    analytics = main.performance_analytics(
+        trades, cash, "CUSTOM", dividends, "2026-01-01", "2026-03-31"
+    )
+
+    assert analytics["net_contributions"] == 1000.0
+    assert analytics["total_dividends"] == 10.0
+
+
 def test_realized_pnl_uses_same_day_trade_order_and_account_scope(client):
     add_account(client, "BrokerageLink")
     add_account(client, "BrokerageLink Roth")

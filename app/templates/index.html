@@ -321,6 +321,9 @@ button:hover { border-color: var(--blue); color: var(--blue); }
 </option>
 {% endfor %}
 </select>
+<input type="hidden" name="period" value="{{ selected_period }}">
+<input type="hidden" name="start_date" value="{{ start_date }}">
+<input type="hidden" name="end_date" value="{{ end_date }}">
 
 <button type="submit">Apply</button>
 </form>
@@ -413,14 +416,20 @@ Return: ${{ "%.2f"|format(total_pnl) }}
 
 <h2>Performance Analytics</h2>
 
-<form method="get">
+<form method="get" id="periodForm">
+{% for acc in selected_account %}<input type="hidden" name="account" value="{{ acc }}">{% endfor %}
 <select name="period" onchange="this.form.submit()">
 <option value="30D" {% if selected_period=='30D' %}selected{% endif %}>30 Days</option>
 <option value="60D" {% if selected_period=='60D' %}selected{% endif %}>60 Days</option>
 <option value="90D" {% if selected_period=='90D' %}selected{% endif %}>90 Days</option>
 <option value="Q" {% if selected_period=='Q' %}selected{% endif %}>Quarter</option>
 <option value="Y" {% if selected_period=='Y' %}selected{% endif %}>Year</option>
+<option value="YTD" {% if selected_period=='YTD' %}selected{% endif %}>Year to Date</option>
+<option value="CUSTOM" {% if selected_period=='CUSTOM' %}selected{% endif %}>Custom</option>
 </select>
+<label>From <input type="date" name="start_date" value="{{ start_date }}"></label>
+<label>To <input type="date" name="end_date" value="{{ end_date }}"></label>
+<button type="submit">Apply dates</button>
 </form>
 
 <h2>Balance</h2>
