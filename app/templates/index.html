@@ -428,6 +428,8 @@ Return: ${{ "%.2f"|format(total_pnl) }}
 
 <h3>Dividend Income</h3>
 
+<p>Total Dividends: ${{ "%.2f"|format(analytics.total_dividends) }}</p>
+
 <b>Monthly</b>
 <ul>
 {% for k,v in analytics.monthly_dividends.items() %}

@@ -251,6 +251,28 @@ def test_brokeragelink_fdrxx_shares_are_reported_as_cash(client, monkeypatch):
     assert metrics["total_cash"] == 1000.0
 
 
+def test_dashboard_analytics_normalizes_contribution_labels_and_totals_dividends(client):
+    add_account(client, "401K")
+    add_cash(client, account="401K", date="2026-07-01", amount="1000", txn_type="Starting Cash")
+    add_cash(client, account="401K", date="2026-07-02", amount="250", txn_type="starting_cash")
+
+    conn = main.get_db_connection()
+    conn.execute(
+        """INSERT INTO dividends(account, date, symbol, quantity, amount, description, type)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        ("401K", "2026-07-03", "FUND", 0, 12.50, "Fund dividend", "Distributions"),
+    )
+    conn.commit()
+    conn.close()
+
+    trades, cash = main.load_data()
+    dividends = main.load_dividends()
+    analytics = main.performance_analytics(trades, cash, "Y", dividends)
+
+    assert analytics["net_contributions"] == 1250.0
+    assert analytics["total_dividends"] == 12.50
+
+
 def test_realized_pnl_uses_same_day_trade_order_and_account_scope(client):
     add_account(client, "BrokerageLink")
     add_account(client, "BrokerageLink Roth")

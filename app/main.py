@@ -181,6 +181,11 @@ def is_brokeragelink_cash(account, symbol):
     return "BROKERAGELINK" in str(account or "").upper() and str(symbol or "").upper() == "FDRXX"
 
 
+def is_contribution_description(description):
+    normalized = re.sub(r"[\s_-]+", "", str(description or "")).upper()
+    return normalized in {"CONTRIBUTION", "STARTINGCASH"}
+
+
 def fidelity_transaction_type(action, type_flag, quantity, amount):
     """Classify Fidelity rows using both the action text and signed fields."""
     action_text = str(action or "").upper()
@@ -1028,6 +1033,7 @@ def performance_analytics(trades, cash, period="90D", dividends=None):
         return {
             "monthly_dividends": {},
             "yearly_dividends": {},
+            "total_dividends": 0,
             "net_contributions": 0,
             "total_pnl": 0,
             "true_return_pct": 0,
@@ -1055,9 +1061,8 @@ def performance_analytics(trades, cash, period="90D", dividends=None):
 
     # ✅ invested capital to date (all-time, not just this period) is the correct return denominator
     all_time_cash = cash[cash["date"] <= today]
-    funding_descriptions = ["CONTRIBUTION", "STARTINGCASH"]
     all_time_contrib = (
-        all_time_cash[all_time_cash["description"].isin(funding_descriptions)]["amount"].sum()
+        all_time_cash[all_time_cash["description"].map(is_contribution_description)]["amount"].sum()
         if not all_time_cash.empty else 0
     )
     all_time_withdraw = abs(all_time_cash[all_time_cash["description"] == "WITHDRAWAL"]["amount"].sum()) if not all_time_cash.empty else 0
@@ -1065,7 +1070,7 @@ def performance_analytics(trades, cash, period="90D", dividends=None):
 
     # Legacy STARTINGCASH entries may be stored as transactions instead of cash flows.
     starting_cash_transactions = (
-        trades[trades["type"] == "STARTINGCASH"]["price"].sum()
+        trades[trades["type"].map(is_contribution_description)]["price"].sum()
         if not trades.empty else 0
     )
     if starting_cash_transactions > 0:
@@ -1082,13 +1087,15 @@ def performance_analytics(trades, cash, period="90D", dividends=None):
         dividends = dividends[dividends["date"] >= start]
         monthly_div = dividends.groupby(dividends["date"].dt.to_period("M"))["amount"].sum()
         yearly_div = dividends.groupby(dividends["date"].dt.to_period("Y"))["amount"].sum()
+        total_dividends = dividends["amount"].sum()
     else:
         monthly_div = pd.Series()
         yearly_div = pd.Series()
+        total_dividends = 0
 
     # ✅ contributions / withdrawals (within selected period, for display)
     contrib = (
-        cash[cash["description"].isin(funding_descriptions)]["amount"].sum()
+        cash[cash["description"].map(is_contribution_description)]["amount"].sum()
         if not cash.empty else 0
     )
     withdraw = abs(cash[cash["description"] == "WITHDRAWAL"]["amount"].sum()) if not cash.empty else 0
@@ -1117,6 +1124,7 @@ def performance_analytics(trades, cash, period="90D", dividends=None):
     return {
         "monthly_dividends": monthly_div.to_dict(),
         "yearly_dividends": yearly_div.to_dict(),
+        "total_dividends": round(total_dividends, 2),
         "net_contributions": round(net_contribution, 2),
         "total_pnl": round(total_pnl, 2),
         "true_return_pct": round(true_return_pct, 2),
