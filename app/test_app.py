@@ -231,6 +231,28 @@ def test_fidelity_core_cash_purchase_is_imported_as_contribution(client):
     assert metrics["total_cash"] == 2500.0
 
 
+def test_fidelity_core_cash_purchase_is_buy_when_matching_dividend(client):
+    fidelity_csv = """Run Date,Account,Account Number,Action,Symbol,Description,Type,Price ($),Quantity,Commission,Fees ($),Accrued Interest,Amount ($),Settlement Date
+8/17/2026,401k,123,DIVIDEND RECEIVED FIDELITY GOVERNMENT CASH RESERVES (FDRXX) (Cash),FDRXX,Fidelity Government Cash Reserves,Cash,1,0,,,,125.00,
+8/17/2026,401k,123,PURCHASE INTO CORE ACCOUNT FIDELITY GOVERNMENT CASH RESERVES (FDRXX) (Cash),FDRXX,Fidelity Government Cash Reserves,Cash,1,-125,,,,-125.00,
+"""
+
+    response = client.post(
+        "/upload_fidelity",
+        data={"fidelity_file": (BytesIO(fidelity_csv.encode()), "activity.csv")},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 302
+    trades, cash = main.load_data()
+    dividends = main.load_dividends()
+
+    assert [(row["symbol"], row["type"], row["shares"])
+            for _, row in trades.iterrows()] == [("FDRXX", "BUY", 125.0)]
+    assert cash.empty
+    assert len(dividends) == 1
+
+
 def test_brokeragelink_fdrxx_shares_are_reported_as_cash(client, monkeypatch):
     add_account(client, "BrokerageLink")
     add_cash(client, account="BrokerageLink", amount="1000")
@@ -310,6 +332,31 @@ def test_dashboard_custom_date_range_limits_contributions_and_dividends(client):
 
     assert analytics["net_contributions"] == 1000.0
     assert analytics["total_dividends"] == 10.0
+
+
+def test_dashboard_counts_legacy_fidelity_core_cash_buys_as_contributions(client):
+    add_account(client, "BrokerageLink")
+    conn = main.get_db_connection()
+    conn.execute(
+        """INSERT INTO transactions(
+           account, date, symbol, type, shares, price, fees, lot_id,
+           fidelity_action, source_amount)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            "BrokerageLink", "2026-07-10", "FDRXX", "BUY", 681.04, 1,
+            0, 0,
+            "PURCHASE INTO CORE ACCOUNT FIDELITY GOVERNMENT CASH RESERVES (FDRXX) (Cash)",
+            -681.04,
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    trades, cash = main.load_data()
+    trades = main.enrich_trades(trades)
+    analytics = main.performance_analytics(trades, cash, "Y")
+
+    assert analytics["net_contributions"] == 681.04
 
 
 def test_realized_pnl_uses_same_day_trade_order_and_account_scope(client):

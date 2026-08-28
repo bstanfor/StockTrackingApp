@@ -186,6 +186,21 @@ def is_contribution_description(description):
     return normalized in {"CONTRIBUTION", "STARTINGCASH"}
 
 
+def is_legacy_core_cash_transaction(row):
+    return (
+        str(row.get("type", "")).upper() == "BUY"
+        and is_brokeragelink_cash(row.get("account", ""), row.get("symbol", ""))
+        and "PURCHASE INTO CORE" in str(row.get("fidelity_action", "")).upper()
+    )
+
+
+def legacy_core_cash_amounts(trades):
+    if trades.empty or "source_amount" not in trades.columns:
+        return pd.Series(dtype="float64")
+    mask = trades.apply(is_legacy_core_cash_transaction, axis=1)
+    return pd.to_numeric(trades.loc[mask, "source_amount"], errors="coerce").abs().fillna(0)
+
+
 def fidelity_transaction_type(action, type_flag, quantity, amount):
     """Classify Fidelity rows using both the action text and signed fields."""
     action_text = str(action or "").upper()
@@ -218,6 +233,16 @@ def fidelity_transaction_type(action, type_flag, quantity, amount):
     return None
 
 
+def is_fidelity_core_cash_action(action):
+    action_text = str(action or "").upper()
+    return "PURCHASE INTO CORE ACCOUNT" in action_text and "FDRXX" in action_text
+
+
+def is_fidelity_core_cash_dividend(action):
+    action_text = str(action or "").upper()
+    return "DIVIDEND RECEIVED FIDELITY GOVERNMENT CASH RESERVES" in action_text and "FDRXX" in action_text
+
+
 def import_fidelity_activity(file):
     df = pd.read_csv(BytesIO(file.read()), dtype=str)
     df.columns = [re.sub(r"\s+", " ", str(column).strip().lower()) for column in df.columns]
@@ -228,6 +253,18 @@ def import_fidelity_activity(file):
     if missing:
         raise ValueError("Missing Fidelity columns: " + ", ".join(sorted(missing)))
 
+    core_cash_dividends = set()
+    for _, row in df.iterrows():
+        if not is_fidelity_core_cash_dividend(row.get("action", "")):
+            continue
+        dividend_date = pd.to_datetime(row["run date"], errors="coerce")
+        if pd.isna(dividend_date):
+            continue
+        core_cash_dividends.add(
+            (str(row["account"]).strip(), dividend_date.strftime("%Y-%m-%d"),
+             abs(safe_float(row["amount ($)"])))
+        )
+
     imported = 0
     conn = get_db_connection()
     try:
@@ -235,13 +272,22 @@ def import_fidelity_activity(file):
             date = pd.to_datetime(row["run date"], errors="coerce")
             quantity = safe_float(row["quantity"])
             signed_amount = safe_float(row["amount ($)"])
+            account = str(row["account"]).strip()
+            row_date = date.strftime("%Y-%m-%d") if not pd.isna(date) else ""
+            is_core_cash_reinvestment = (
+                is_fidelity_core_cash_action(row.get("action", ""))
+                and quantity != 0
+                and signed_amount < 0
+                and (account, row_date, abs(quantity)) in core_cash_dividends
+            )
             action = fidelity_transaction_type(
                 row["action"], row.get("type", ""), quantity, signed_amount
             )
+            if is_core_cash_reinvestment:
+                action = "BUY"
             if action is None or pd.isna(date):
                 continue
 
-            account = str(row["account"]).strip()
             account_number = fidelity_account_number(row["account number"])
             symbol = str(row["symbol"]).strip().upper()
             shares = abs(quantity)
@@ -1088,6 +1134,7 @@ def performance_analytics(trades, cash, period="1Y", dividends=None,
         all_time_cash[all_time_cash["description"].map(is_contribution_description)]["amount"].sum()
         if not all_time_cash.empty else 0
     )
+    all_time_contrib += legacy_core_cash_amounts(trades).sum()
     all_time_withdraw = abs(all_time_cash[all_time_cash["description"] == "WITHDRAWAL"]["amount"].sum()) if not all_time_cash.empty else 0
     invested_capital = all_time_contrib - all_time_withdraw
 
@@ -1121,6 +1168,7 @@ def performance_analytics(trades, cash, period="1Y", dividends=None,
         cash[cash["description"].map(is_contribution_description)]["amount"].sum()
         if not cash.empty else 0
     )
+    contrib += legacy_core_cash_amounts(trades).sum()
     withdraw = abs(cash[cash["description"] == "WITHDRAWAL"]["amount"].sum()) if not cash.empty else 0
 
     net_contribution = contrib - withdraw
