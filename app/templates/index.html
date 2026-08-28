@@ -991,12 +991,7 @@ function filterActivity() {
 }
 
 function updateActivityWindow() {
-    const scroller = document.querySelector("#activityTab .virtual-scroll");
-    const rows = [...document.querySelectorAll("#activityTab tbody tr")];
-    if (!scroller || rows.length < 100) return;
-    const first = Math.max(0, Math.floor(scroller.scrollTop / 42) - 15);
-    const last = first + 100;
-    rows.forEach((row, index) => { row.style.visibility = index >= first && index <= last ? "visible" : "hidden"; });
+    return;
 }
 
 function toggleColumn(control) {
