@@ -52,6 +52,23 @@ def init_db():
     )
     """)
 
+    transaction_columns = {
+        "account_number": "TEXT",
+        "fidelity_action": "TEXT",
+        "description": "TEXT",
+        "fidelity_type": "TEXT",
+        "commission": "REAL",
+        "accrued_interest": "REAL",
+        "source_amount": "REAL",
+        "settlement_date": "TEXT",
+    }
+    existing_transaction_columns = {
+        row[1] for row in c.execute("PRAGMA table_info(transactions)").fetchall()
+    }
+    for column, data_type in transaction_columns.items():
+        if column not in existing_transaction_columns:
+            c.execute(f"ALTER TABLE transactions ADD COLUMN {column} {data_type}")
+
     c.execute("""
     CREATE TABLE IF NOT EXISTS cash_flows (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -75,6 +92,27 @@ def init_db():
         type TEXT
     )
     """)
+
+    dividend_columns = {
+        "account_number": "TEXT",
+        "quantity": "REAL",
+        "amount": "REAL",
+        "description": "TEXT",
+        "type": "TEXT",
+        "fidelity_action": "TEXT",
+        "price": "REAL",
+        "fees": "REAL",
+        "commission": "REAL",
+        "accrued_interest": "REAL",
+        "source_amount": "REAL",
+        "settlement_date": "TEXT",
+    }
+    existing_dividend_columns = {
+        row[1] for row in c.execute("PRAGMA table_info(dividends)").fetchall()
+    }
+    for column, data_type in dividend_columns.items():
+        if column not in existing_dividend_columns:
+            c.execute(f"ALTER TABLE dividends ADD COLUMN {column} {data_type}")
 
     conn.commit()
     conn.close()
@@ -195,7 +233,19 @@ def import_fidelity_activity(file):
             shares = abs(quantity)
             price = abs(safe_float(row["price ($)"]))
             fees = abs(safe_float(row["fees ($)"]))
+            commission = safe_float(row.get("commission", ""))
+            accrued_interest = safe_float(row.get("accrued interest", ""))
             amount = abs(signed_amount)
+            settlement_date = pd.to_datetime(
+                row.get("settlement date", ""), errors="coerce"
+            )
+            settlement_date = (
+                settlement_date.strftime("%Y-%m-%d")
+                if not pd.isna(settlement_date) else ""
+            )
+            fidelity_description = str(row.get("description", "") or "").strip()
+            fidelity_type = str(row.get("type", "") or "").strip()
+            fidelity_action_text = str(row.get("action", "") or "").strip()
 
             conn.execute(
                 "INSERT OR IGNORE INTO accounts(name, account_number) VALUES (?, ?)",
@@ -215,6 +265,14 @@ def import_fidelity_activity(file):
                 VALUES(?,?,?,?,?,?,?,?)
                 """, (account, date.strftime("%Y-%m-%d"), symbol, action,
                        shares, price, fees, 0))
+                conn.execute("""
+                UPDATE transactions
+                SET account_number=?, fidelity_action=?, description=?, fidelity_type=?,
+                    commission=?, accrued_interest=?, source_amount=?, settlement_date=?
+                WHERE id=last_insert_rowid()
+                """, (account_number or None, fidelity_action_text,
+                       fidelity_description, fidelity_type, commission,
+                       accrued_interest, signed_amount, settlement_date))
             elif action == "SELL":
                 if not symbol or shares == 0:
                     continue
@@ -223,13 +281,23 @@ def import_fidelity_activity(file):
                 VALUES(?,?,?,?,?,?,?,?)
                 """, (account, date.strftime("%Y-%m-%d"), symbol, action,
                        shares, price, fees, 0))
+                conn.execute("""
+                UPDATE transactions
+                SET account_number=?, fidelity_action=?, description=?, fidelity_type=?,
+                    commission=?, accrued_interest=?, source_amount=?, settlement_date=?
+                WHERE id=last_insert_rowid()
+                """, (account_number or None, fidelity_action_text,
+                       fidelity_description, fidelity_type, commission,
+                       accrued_interest, signed_amount, settlement_date))
             else:
                 conn.execute("""
-                INSERT INTO dividends(account,account_number,date,symbol,quantity,amount,description,type)
-                VALUES(?,?,?,?,?,?,?,?)
+                  INSERT INTO dividends(account,account_number,date,symbol,quantity,amount,description,type,
+                      fidelity_action,price,fees,commission,accrued_interest,source_amount,settlement_date)
+                  VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """, (account, account_number or None, date.strftime("%Y-%m-%d"),
-                       symbol, quantity, amount, row.get("description", ""),
-                       row.get("type", "")))
+                      symbol, quantity, amount, fidelity_description, fidelity_type,
+                      fidelity_action_text, price, fees, commission, accrued_interest,
+                      signed_amount, settlement_date))
             imported += 1
 
         conn.commit()
@@ -618,10 +686,11 @@ def compute_metrics(trades, cash):
         "total_pnl": round(total_pnl, 2)
     }
 
-def build_activity(trades, cash):
+def build_activity(trades, cash, dividends=None):
     
     # ✅ SAFETY FILTER
     trades = trades[trades["type"].isin(["BUY", "SELL", "DIVIDEND"])]
+    dividends = dividends if dividends is not None else pd.DataFrame()
 
     rows = []
 
@@ -669,8 +738,16 @@ def build_activity(trades, cash):
             "id": t["id"],
             "date": t["date"],
             "account": account,             # ✅ multi-account restored
+            "account_number": t.get("account_number", ""),
             "symbol": t.get("symbol", ""),
             "action": t["type"],
+            "description": t.get("description", ""),
+            "fidelity_action": t.get("fidelity_action", ""),
+            "fidelity_type": t.get("fidelity_type", ""),
+            "commission": t.get("commission", 0) or 0,
+            "accrued_interest": t.get("accrued_interest", 0) or 0,
+            "source_amount": t.get("source_amount", ""),
+            "settlement_date": t.get("settlement_date", ""),
             "lot_id": lot_id,
             "shares": shares,
             "share_price": price,
@@ -715,6 +792,31 @@ def build_activity(trades, cash):
             "pl_dollar": 0,                # ✅ UI consistency
             "pl_percent": 0,
             "source": "cash"               # ✅ explicit separation
+        })
+
+    for _, d in dividends.iterrows():
+        rows.append({
+            "id": d["id"],
+            "date": d["date"],
+            "account": d.get("account", "default"),
+            "account_number": d.get("account_number", "") or "",
+            "symbol": d.get("symbol", ""),
+            "action": "DIVIDEND",
+            "description": d.get("description", "") or "",
+            "fidelity_action": d.get("fidelity_action", "") or "",
+            "fidelity_type": d.get("type", "") or "",
+            "shares": d.get("quantity", 0) or 0,
+            "share_price": d.get("price", 0) or 0,
+            "trade_amount": 0,
+            "fees": d.get("fees", 0) or 0,
+            "commission": d.get("commission", 0) or 0,
+            "accrued_interest": d.get("accrued_interest", 0) or 0,
+            "source_amount": d.get("source_amount", d.get("amount", 0)) or 0,
+            "settlement_date": d.get("settlement_date", "") or "",
+            "net_cash_flow": 0,
+            "pl_dollar": 0,
+            "pl_percent": 0,
+            "source": "dividend",
         })
 
 
@@ -1008,7 +1110,7 @@ def index():
     # ✅ analytic
     trades = enrich_trades(trades)
     metrics = compute_metrics(trades, cash)
-    activity = build_activity(trades, cash)
+    activity = build_activity(trades, cash, dividends)
     account_bal = account_balances(activity)
     period = request.args.get("period", "1Y")
     chart = equity_chart(trades, cash, period="1Y")

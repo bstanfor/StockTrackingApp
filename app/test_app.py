@@ -141,6 +141,11 @@ def test_fidelity_401k_upload_imports_activity(client):
     transactions = conn.execute(
         "SELECT account, symbol, type, shares FROM transactions ORDER BY id"
     ).fetchall()
+    transaction_metadata = conn.execute(
+        """SELECT account_number, fidelity_action, description, fidelity_type,
+                  commission, accrued_interest, source_amount, settlement_date
+           FROM transactions ORDER BY id"""
+    ).fetchall()
     cash_flows = conn.execute(
         "SELECT account, description, amount FROM cash_flows ORDER BY id"
     ).fetchall()
@@ -164,6 +169,17 @@ def test_fidelity_401k_upload_imports_activity(client):
     ]
     assert accounts == ["BrokerageLink", "BrokerageLink Roth"]
     assert account_details == {"BrokerageLink": "123", "BrokerageLink Roth": "456"}
+    assert [tuple(row) for row in transaction_metadata] == [
+        ("123", "YOU BOUGHT TEST CORP", "Test Corp", "Stocks", 0.0, 0.0, -50.0, "2026-08-19"),
+        ("456", "REINVESTMENT FUND", "Fund", "Cash", 0.0, 0.0, -3.0, ""),
+    ]
+
+    html = response.get_data(as_text=True)
+    for column_label in [
+        "Account #", "Description", "Fidelity Action", "Fidelity Type",
+        "Commission", "Accrued Interest", "Source Amount", "Settlement Date",
+    ]:
+        assert column_label in html
 
 
 def test_fidelity_import_requires_dividend_zero_quantity_and_purchase_negative_amount(client):

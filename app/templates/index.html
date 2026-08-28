@@ -593,6 +593,14 @@ Portfolio Growth: ${{ analytics.total_pnl }}
 <label><input type="checkbox" data-column="3" checked onchange="toggleColumn(this)"> Symbol</label>
 <label><input type="checkbox" data-column="4" checked onchange="toggleColumn(this)"> Action</label>
 <label><input type="checkbox" data-column="10" checked onchange="toggleColumn(this)"> P&L</label>
+<label><input type="checkbox" data-column="13" onchange="toggleColumn(this)"> Account #</label>
+<label><input type="checkbox" data-column="14" onchange="toggleColumn(this)"> Description</label>
+<label><input type="checkbox" data-column="15" onchange="toggleColumn(this)"> Fidelity Action</label>
+<label><input type="checkbox" data-column="16" onchange="toggleColumn(this)"> Fidelity Type</label>
+<label><input type="checkbox" data-column="17" onchange="toggleColumn(this)"> Commission</label>
+<label><input type="checkbox" data-column="18" onchange="toggleColumn(this)"> Accrued Interest</label>
+<label><input type="checkbox" data-column="19" onchange="toggleColumn(this)"> Source Amount</label>
+<label><input type="checkbox" data-column="20" onchange="toggleColumn(this)"> Settlement Date</label>
 </details></div>
 </div>
 
@@ -724,6 +732,14 @@ Portfolio Growth: ${{ analytics.total_pnl }}
 <th onclick="sortTable(this,10)">P&L $</th>
 <th onclick="sortTable(this,11)">P&L %</th>
 <th onclick="sortTable(this,12)">Balance</th>
+<th onclick="sortTable(this,13)">Account #</th>
+<th onclick="sortTable(this,14)">Description</th>
+<th onclick="sortTable(this,15)">Fidelity Action</th>
+<th onclick="sortTable(this,16)">Fidelity Type</th>
+<th onclick="sortTable(this,17)">Commission</th>
+<th onclick="sortTable(this,18)">Accrued Interest</th>
+<th onclick="sortTable(this,19)">Source Amount</th>
+<th onclick="sortTable(this,20)">Settlement Date</th>
 <th>Actions</th>
 </tr>
 </thead>
@@ -842,10 +858,20 @@ Portfolio Growth: ${{ analytics.total_pnl }}
 <!-- ✅ RUNNING BALANCE -->
 <td>${{ "%.2f"|format(balance) }}</td>
 
+<!-- ✅ FIDELITY SOURCE FIELDS -->
+<td>{{ t.account_number or "-" }}</td>
+<td>{{ t.description or "-" }}</td>
+<td>{{ t.fidelity_action or "-" }}</td>
+<td>{{ t.fidelity_type or "-" }}</td>
+<td>${{ "%.2f"|format(t.commission or 0) }}</td>
+<td>${{ "%.2f"|format(t.accrued_interest or 0) }}</td>
+<td>{% if t.get("source_amount") is not none and t.get("source_amount") != "" %}${{ "%.2f"|format(t.get("source_amount")) }}{% else %}-{% endif %}</td>
+<td>{{ t.get("settlement_date") or "-" }}</td>
+
 <!-- ✅ ACTIONS (backward compatible routing fallback) -->
 <td class="actions">
 
-  {% if t.source == "trade" %}
+    {% if t.source == "trade" %}
     {% if t.id %}
     <button onclick="inlineEdit(this, '{{ t.id }}')">Edit</button>
       <button onclick="deleteRow('{{ t.id }}')">Delete</button>
@@ -853,7 +879,7 @@ Portfolio Growth: ${{ analytics.total_pnl }}
       <!-- fallback -->
       <a href="#">Edit</a>
     {% endif %}
-  {% else %}
+    {% elif t.source == "cash" %}
     {% if t.id %}
       <button onclick="deleteCash('{{ t.id }}')">Delete</button>
     {% else %}
