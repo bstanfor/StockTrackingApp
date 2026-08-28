@@ -177,6 +177,10 @@ def fidelity_account_number(value):
     return "" if value.lower() in {"", "nan", "none"} else value
 
 
+def is_brokeragelink_cash(account, symbol):
+    return "BROKERAGELINK" in str(account or "").upper() and str(symbol or "").upper() == "FDRXX"
+
+
 def fidelity_transaction_type(action, type_flag, quantity, amount):
     """Classify Fidelity rows using both the action text and signed fields."""
     action_text = str(action or "").upper()
@@ -481,6 +485,7 @@ def compute_positions(trades, cash):
         # ✅ START CASH FROM CASH FLOWS (CRITICAL FIX)
         cash_balance = acc_cash["amount"].sum() if not acc_cash.empty else 0
         cash_val = cash_balance
+        cash_equivalent_lots = []
 
         # -------------------------
         # PROCESS TRADES
@@ -500,6 +505,11 @@ def compute_positions(trades, cash):
 
                 # ✅ include fees
                 cash_val -= (row["shares"] * row["price"] + row["fees"])
+                if is_brokeragelink_cash(acc, sym):
+                    cash_equivalent_lots.append({
+                        "shares": row["shares"],
+                        "price": row["price"],
+                    })
 
             elif row["type"] == "SELL":
                 remaining = row["shares"]
@@ -518,6 +528,14 @@ def compute_positions(trades, cash):
                     if lot["shares"] == 0:
                         inventory[sym].pop(0)
 
+                if is_brokeragelink_cash(acc, sym):
+                    cash_equivalent_lots.append({
+                        "shares": -row["shares"],
+                        "price": row["price"],
+                    })
+
+        cash_val += sum(lot["shares"] * lot["price"] for lot in cash_equivalent_lots)
+
         # -------------------------
         # BUILD POSITIONS
         # -------------------------
@@ -526,6 +544,9 @@ def compute_positions(trades, cash):
 
         for sym, shares in positions.items():
             if shares <= 0:
+                continue
+
+            if is_brokeragelink_cash(acc, sym):
                 continue
 
             price, prev_price = get_price_cached(sym)
@@ -639,47 +660,66 @@ def compute_metrics(trades, cash):
     # ✅ TRUE FIFO inventory for cost basis
     inventory = {}
     positions = {}
+    cash_equivalent_positions = {}
 
     for _, row in trades.iterrows():
         sym = row["symbol"]
+        position_key = (row["account"], sym)
 
-        inventory.setdefault(sym, [])
-        positions.setdefault(sym, 0)
+        inventory.setdefault(position_key, [])
+        positions.setdefault(position_key, 0)
 
         if row["type"] == "BUY":
-            inventory[sym].append({
+            inventory[position_key].append({
                 "shares": row["shares"],
                 "price": row["price"]
             })
-            positions[sym] += row["shares"]
+            positions[position_key] += row["shares"]
+            if is_brokeragelink_cash(row["account"], sym):
+                cash_equivalent_positions[position_key] = (
+                    cash_equivalent_positions.get(position_key, 0) + row["shares"]
+                )
 
         elif row["type"] == "SELL":
             remaining = row["shares"]
-            positions[sym] -= row["shares"]
+            positions[position_key] -= row["shares"]
+            if is_brokeragelink_cash(row["account"], sym):
+                cash_equivalent_positions[position_key] = (
+                    cash_equivalent_positions.get(position_key, 0) - row["shares"]
+                )
 
-            while remaining > 0 and len(inventory[sym]) > 0:
-                lot = inventory[sym][0]
+            while remaining > 0 and len(inventory[position_key]) > 0:
+                lot = inventory[position_key][0]
 
                 used = min(remaining, lot["shares"])
                 lot["shares"] -= used
                 remaining -= used
 
                 if lot["shares"] == 0:
-                    inventory[sym].pop(0)
+                    inventory[position_key].pop(0)
+
+    cash_balance += sum(
+        shares * get_price_cached("FDRXX")[0]
+        for (account, symbol), shares in cash_equivalent_positions.items()
+        if shares > 0 and is_brokeragelink_cash(account, symbol)
+    )
 
     holdings_value = 0
     unrealized_pnl = 0
 
-    for sym, shares in positions.items():
+    for (account, sym), shares in positions.items():
         if shares <= 0:
+            continue
+
+        if is_brokeragelink_cash(account, sym):
             continue
 
         price, prev_price = get_price_cached(sym)
 
-        cost = sum(l["shares"] * l["price"] for l in inventory[sym])
+        cost = sum(l["shares"] * l["price"] for l in inventory[(account, sym)])
         value = shares * price
 
-        remaining_cost = sum(l["shares"] * l["price"] for l in inventory[sym])
+        remaining_cost = sum(l["shares"] * l["price"] for l in inventory[(account, sym)])
         avg_cost = remaining_cost / shares if shares > 0 else 0
 
         holdings_value += value

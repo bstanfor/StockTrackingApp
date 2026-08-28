@@ -231,6 +231,26 @@ def test_fidelity_core_cash_purchase_is_imported_as_contribution(client):
     assert metrics["total_cash"] == 2500.0
 
 
+def test_brokeragelink_fdrxx_shares_are_reported_as_cash(client, monkeypatch):
+    add_account(client, "BrokerageLink")
+    add_cash(client, account="BrokerageLink", amount="1000")
+    add_trade(
+        client, account="BrokerageLink", symbol="FDRXX", shares="500",
+        price="1", fees="0"
+    )
+
+    monkeypatch.setattr(main, "get_price_cached", lambda symbol: (1.0, 1.0))
+    trades, cash = main.load_data()
+    enriched = main.enrich_trades(trades)
+
+    positions = main.compute_positions(enriched, cash)["BrokerageLink"]
+    metrics = main.compute_metrics(enriched, cash)
+
+    assert positions["cash"] == 1000.0
+    assert positions["positions"] == []
+    assert metrics["total_cash"] == 1000.0
+
+
 def test_realized_pnl_uses_same_day_trade_order_and_account_scope(client):
     add_account(client, "BrokerageLink")
     add_account(client, "BrokerageLink Roth")
