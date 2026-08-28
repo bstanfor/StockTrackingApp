@@ -273,6 +273,23 @@ def test_brokeragelink_fdrxx_shares_are_reported_as_cash(client, monkeypatch):
     assert metrics["total_cash"] == 1000.0
 
 
+def test_all_accounts_report_fdrxx_shares_as_cash(client, monkeypatch):
+    add_account(client, "401K")
+    add_cash(client, account="401K", amount="1000")
+    add_trade(client, account="401K", symbol="FDRXX", shares="750", price="1", fees="0")
+
+    monkeypatch.setattr(main, "get_price_cached", lambda symbol: (1.0, 1.0))
+    trades, cash = main.load_data()
+    enriched = main.enrich_trades(trades)
+
+    account = main.compute_positions(enriched, cash)["401K"]
+    metrics = main.compute_metrics(enriched, cash)
+
+    assert account["cash"] == 1000.0
+    assert account["positions"] == []
+    assert metrics["total_cash"] == 1000.0
+
+
 def test_dashboard_analytics_normalizes_contribution_labels_and_totals_dividends(client):
     add_account(client, "401K")
     add_cash(client, account="401K", date="2026-07-01", amount="1000", txn_type="Starting Cash")

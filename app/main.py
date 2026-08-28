@@ -177,8 +177,8 @@ def fidelity_account_number(value):
     return "" if value.lower() in {"", "nan", "none"} else value
 
 
-def is_brokeragelink_cash(account, symbol):
-    return "BROKERAGELINK" in str(account or "").upper() and str(symbol or "").upper() == "FDRXX"
+def is_fdrxx_cash(symbol):
+    return str(symbol or "").strip().upper() == "FDRXX"
 
 
 def is_contribution_description(description):
@@ -189,7 +189,7 @@ def is_contribution_description(description):
 def is_legacy_core_cash_transaction(row):
     return (
         str(row.get("type", "")).upper() == "BUY"
-        and is_brokeragelink_cash(row.get("account", ""), row.get("symbol", ""))
+        and is_fdrxx_cash(row.get("symbol", ""))
         and "PURCHASE INTO CORE" in str(row.get("fidelity_action", "")).upper()
     )
 
@@ -556,7 +556,7 @@ def compute_positions(trades, cash):
 
                 # ✅ include fees
                 cash_val -= (row["shares"] * row["price"] + row["fees"])
-                if is_brokeragelink_cash(acc, sym):
+                if is_fdrxx_cash(sym):
                     cash_equivalent_lots.append({
                         "shares": row["shares"],
                         "price": row["price"],
@@ -579,7 +579,7 @@ def compute_positions(trades, cash):
                     if lot["shares"] == 0:
                         inventory[sym].pop(0)
 
-                if is_brokeragelink_cash(acc, sym):
+                if is_fdrxx_cash(sym):
                     cash_equivalent_lots.append({
                         "shares": -row["shares"],
                         "price": row["price"],
@@ -597,7 +597,7 @@ def compute_positions(trades, cash):
             if shares <= 0:
                 continue
 
-            if is_brokeragelink_cash(acc, sym):
+            if is_fdrxx_cash(sym):
                 continue
 
             price, prev_price = get_price_cached(sym)
@@ -726,7 +726,7 @@ def compute_metrics(trades, cash):
                 "price": row["price"]
             })
             positions[position_key] += row["shares"]
-            if is_brokeragelink_cash(row["account"], sym):
+            if is_fdrxx_cash(sym):
                 cash_equivalent_positions[position_key] = (
                     cash_equivalent_positions.get(position_key, 0) + row["shares"]
                 )
@@ -734,7 +734,7 @@ def compute_metrics(trades, cash):
         elif row["type"] == "SELL":
             remaining = row["shares"]
             positions[position_key] -= row["shares"]
-            if is_brokeragelink_cash(row["account"], sym):
+            if is_fdrxx_cash(sym):
                 cash_equivalent_positions[position_key] = (
                     cash_equivalent_positions.get(position_key, 0) - row["shares"]
                 )
@@ -752,7 +752,7 @@ def compute_metrics(trades, cash):
     cash_balance += sum(
         shares * get_price_cached("FDRXX")[0]
         for (account, symbol), shares in cash_equivalent_positions.items()
-        if shares > 0 and is_brokeragelink_cash(account, symbol)
+        if shares > 0 and is_fdrxx_cash(symbol)
     )
 
     holdings_value = 0
@@ -762,7 +762,7 @@ def compute_metrics(trades, cash):
         if shares <= 0:
             continue
 
-        if is_brokeragelink_cash(account, sym):
+        if is_fdrxx_cash(sym):
             continue
 
         price, prev_price = get_price_cached(sym)
