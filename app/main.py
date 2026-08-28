@@ -182,6 +182,11 @@ def fidelity_transaction_type(action, type_flag, quantity, amount):
     action_text = str(action or "").upper()
     type_text = str(type_flag or "").upper()
 
+    if "PURCHASE INTO CORE" in action_text and (
+        "FDRXX" in action_text or "CASH" in action_text or "CORE" in type_text
+    ):
+        return "CONTRIBUTION"
+
     if quantity == 0 and (
         "DIVIDEND" in action_text
         or "DIVIDEND" in type_text
@@ -257,7 +262,12 @@ def import_fidelity_activity(file):
                     (account_number, account),
                 )
 
-            if action == "BUY":
+            if action == "CONTRIBUTION":
+                conn.execute("""
+                INSERT INTO cash_flows(account,date,amount,description)
+                VALUES(?,?,?,?)
+                """, (account, date.strftime("%Y-%m-%d"), amount, action))
+            elif action == "BUY":
                 if not symbol or shares == 0:
                     continue
                 conn.execute("""

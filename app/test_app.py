@@ -210,6 +210,27 @@ def test_fidelity_import_requires_dividend_zero_quantity_and_purchase_negative_a
     assert [(row[0], row[1], row[2]) for row in dividends] == [("FUND", 0.0, 12.5)]
 
 
+def test_fidelity_core_cash_purchase_is_imported_as_contribution(client):
+    fidelity_csv = """Run Date,Account,Account Number,Action,Symbol,Description,Type,Price ($),Quantity,Commission,Fees ($),Accrued Interest,Amount ($),Settlement Date
+8/17/2026,401k,123,PURCHASE INTO CORE ACCOUNT FIDELITY GOVERNMENT CASH RESERVES (FDRXX) (Cash),FDRXX,Fidelity Government Cash Reserves,Cash,1,0,,,,2500.00,
+"""
+
+    response = client.post(
+        "/upload_fidelity",
+        data={"fidelity_file": (BytesIO(fidelity_csv.encode()), "activity.csv")},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 302
+    trades, cash = main.load_data()
+    assert trades.empty
+    assert [(row["account"], row["description"], row["amount"])
+            for _, row in cash.iterrows()] == [("401k", "CONTRIBUTION", 2500.0)]
+
+    metrics = main.compute_metrics(trades, cash)
+    assert metrics["total_cash"] == 2500.0
+
+
 def test_realized_pnl_uses_same_day_trade_order_and_account_scope(client):
     add_account(client, "BrokerageLink")
     add_account(client, "BrokerageLink Roth")
