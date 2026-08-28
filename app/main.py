@@ -2,6 +2,8 @@
 from flask import Flask, render_template, request, redirect, Response
 import json
 import sqlite3
+import re
+from io import BytesIO
 import pandas as pd
 import plotly.express as px
 import yfinance as yf
@@ -60,6 +62,20 @@ def init_db():
     )
     """)
 
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS dividends (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        account TEXT,
+        account_number TEXT,
+        date TEXT,
+        symbol TEXT,
+        quantity REAL,
+        amount REAL,
+        description TEXT,
+        type TEXT
+    )
+    """)
+
     conn.commit()
     conn.close()
 
@@ -95,9 +111,132 @@ def get_price_cached(symbol):
 # ---------------------------
 def safe_float(v):
     try:
-        return float(v)
+        if pd.isna(v):
+            return 0.0
+        value = str(v).strip().replace(",", "").replace("$", "")
+        if value in {"", "-", "--"}:
+            return 0.0
+        return float(value.replace("(", "-").replace(")", ""))
     except:
         return 0.0
+
+
+def fidelity_action(action):
+    action = str(action or "").upper()
+    if "DIVIDEND RECEIVED" in action:
+        return "DIVIDEND"
+    if "REINVESTMENT" in action or "YOU BOUGHT" in action:
+        return "BUY"
+    if "YOU SOLD" in action or "REDEMPTION FROM CORE" in action:
+        return "SELL"
+    if "PURCHASE INTO CORE" in action:
+        return "BUY"
+    return None
+
+
+def fidelity_account_number(value):
+    value = str(value or "").strip()
+    return "" if value.lower() in {"", "nan", "none"} else value
+
+
+def fidelity_transaction_type(action, type_flag, quantity, amount):
+    """Classify Fidelity rows using both the action text and signed fields."""
+    action_text = str(action or "").upper()
+    type_text = str(type_flag or "").upper()
+
+    if quantity == 0 and (
+        "DIVIDEND" in action_text
+        or "DIVIDEND" in type_text
+        or "DISTRIBUTION" in type_text
+    ):
+        return "DIVIDEND"
+
+    if quantity != 0 and amount < 0 and (
+        "PURCHASE" in type_text
+        or "REINVESTMENT" in type_text
+        or "REINVESTMENT" in action_text
+        or "YOU BOUGHT" in action_text
+        or "PURCHASE INTO CORE" in action_text
+    ):
+        return "BUY"
+
+    if "YOU SOLD" in action_text or "REDEMPTION FROM CORE" in action_text:
+        return "SELL"
+
+    return None
+
+
+def import_fidelity_activity(file):
+    df = pd.read_csv(BytesIO(file.read()), dtype=str)
+    df.columns = [re.sub(r"\s+", " ", str(column).strip().lower()) for column in df.columns]
+
+    required = {"run date", "account", "account number", "action", "symbol", "price ($)",
+                "quantity", "fees ($)", "amount ($)"}
+    missing = required.difference(df.columns)
+    if missing:
+        raise ValueError("Missing Fidelity columns: " + ", ".join(sorted(missing)))
+
+    imported = 0
+    conn = get_db_connection()
+    try:
+        for _, row in df.iterrows():
+            date = pd.to_datetime(row["run date"], errors="coerce")
+            quantity = safe_float(row["quantity"])
+            signed_amount = safe_float(row["amount ($)"])
+            action = fidelity_transaction_type(
+                row["action"], row.get("type", ""), quantity, signed_amount
+            )
+            if action is None or pd.isna(date):
+                continue
+
+            account = str(row["account"]).strip()
+            account_number = fidelity_account_number(row["account number"])
+            symbol = str(row["symbol"]).strip().upper()
+            shares = abs(quantity)
+            price = abs(safe_float(row["price ($)"]))
+            fees = abs(safe_float(row["fees ($)"]))
+            amount = abs(signed_amount)
+
+            conn.execute(
+                "INSERT OR IGNORE INTO accounts(name, account_number) VALUES (?, ?)",
+                (account, account_number or None),
+            )
+            if account_number:
+                conn.execute(
+                    "UPDATE accounts SET account_number=? WHERE name=? AND (account_number IS NULL OR account_number='')",
+                    (account_number, account),
+                )
+
+            if action == "BUY":
+                if not symbol or shares == 0:
+                    continue
+                conn.execute("""
+                INSERT INTO transactions(account,date,symbol,type,shares,price,fees,lot_id)
+                VALUES(?,?,?,?,?,?,?,?)
+                """, (account, date.strftime("%Y-%m-%d"), symbol, action,
+                       shares, price, fees, 0))
+            elif action == "SELL":
+                if not symbol or shares == 0:
+                    continue
+                conn.execute("""
+                INSERT INTO transactions(account,date,symbol,type,shares,price,fees,lot_id)
+                VALUES(?,?,?,?,?,?,?,?)
+                """, (account, date.strftime("%Y-%m-%d"), symbol, action,
+                       shares, price, fees, 0))
+            else:
+                conn.execute("""
+                INSERT INTO dividends(account,account_number,date,symbol,quantity,amount,description,type)
+                VALUES(?,?,?,?,?,?,?,?)
+                """, (account, account_number or None, date.strftime("%Y-%m-%d"),
+                       symbol, quantity, amount, row.get("description", ""),
+                       row.get("type", "")))
+            imported += 1
+
+        conn.commit()
+    finally:
+        conn.close()
+
+    return imported
 
 # ---------------------------
 # LOAD
@@ -115,6 +254,17 @@ def load_data():
         cash["date"] = pd.to_datetime(cash["date"])
 
     return trades, cash
+
+
+def load_dividends():
+    conn = get_db_connection()
+    dividends = pd.read_sql("SELECT * FROM dividends", conn)
+    conn.close()
+
+    if not dividends.empty:
+        dividends["date"] = pd.to_datetime(dividends["date"])
+
+    return dividends
 
 def load_accounts():
     conn = get_db_connection()
@@ -150,7 +300,7 @@ def enrich_trades(trades):
         trades["realized_pct"] = pd.Series(dtype="float64")
         return trades
 
-    trades = trades.sort_values("date").copy()
+    trades = trades.sort_values(["date", "id"]).copy()
     trades["trade_amount"] = trades["shares"] * trades["price"]
     trades["realized_pnl"] = 0.0
     trades["realized_pct"] = 0.0
@@ -158,13 +308,13 @@ def enrich_trades(trades):
     inventory = {}
 
     for i, row in trades.iterrows():
-        sym = row["symbol"]
+        inventory_key = (row["account"], row["symbol"])
 
-        if sym not in inventory:
-            inventory[sym] = []
+        if inventory_key not in inventory:
+            inventory[inventory_key] = []
 
         if row["type"] == "BUY":
-            inventory[sym].append({
+            inventory[inventory_key].append({
                 "shares": row["shares"],
                 "price": row["price"]
             })
@@ -174,8 +324,8 @@ def enrich_trades(trades):
             pnl = 0
             total_cost = 0
 
-            while remaining > 0 and len(inventory[sym]) > 0:
-                lot = inventory[sym][0]
+            while remaining > 0 and len(inventory[inventory_key]) > 0:
+                lot = inventory[inventory_key][0]
 
                 matched = min(remaining, lot["shares"])
 
@@ -186,7 +336,7 @@ def enrich_trades(trades):
                 remaining -= matched
 
                 if lot["shares"] == 0:
-                    inventory[sym].pop(0)
+                    inventory[inventory_key].pop(0)
 
             pnl = pnl - row["fees"]
 
@@ -718,9 +868,11 @@ def equity_chart(trades, cash, period="1Y"):
 
     return fig.to_html(full_html=False)
 
-def performance_analytics(trades, cash, period="90D"):
+def performance_analytics(trades, cash, period="90D", dividends=None):
 
-    if trades.empty and cash.empty:
+    dividends = dividends if dividends is not None else pd.DataFrame()
+
+    if trades.empty and cash.empty and dividends.empty:
         return {
             "monthly_dividends": {},
             "yearly_dividends": {},
@@ -774,12 +926,10 @@ def performance_analytics(trades, cash, period="90D"):
     trades = trades[trades["date"] >= start]
     cash = cash[cash["date"] >= start]
 
-    # ✅ dividends
-    dividends = trades[trades["type"] == "DIVIDEND"]
-
     if not dividends.empty:
-        monthly_div = dividends.groupby(dividends["date"].dt.to_period("M"))["price"].sum()
-        yearly_div = dividends.groupby(dividends["date"].dt.to_period("Y"))["price"].sum()
+        dividends = dividends[dividends["date"] >= start]
+        monthly_div = dividends.groupby(dividends["date"].dt.to_period("M"))["amount"].sum()
+        yearly_div = dividends.groupby(dividends["date"].dt.to_period("Y"))["amount"].sum()
     else:
         monthly_div = pd.Series()
         yearly_div = pd.Series()
@@ -843,6 +993,7 @@ def index():
 
     # ✅ load data First (Critical Fix)
     trades, cash = load_data()
+    dividends = load_dividends()
     
     # ✅ ✅ Filter and EXTRA SAFETY STARTS HERE
     if not trades.empty and "account" in trades.columns:
@@ -850,6 +1001,9 @@ def index():
 
     if not cash.empty and "account" in cash.columns:
         cash = cash[cash["account"].isin(selected_accounts)]
+
+    if not dividends.empty and "account" in dividends.columns:
+        dividends = dividends[dividends["account"].isin(selected_accounts)]
     
     # ✅ analytic
     trades = enrich_trades(trades)
@@ -865,7 +1019,7 @@ def index():
     
     # analytics function
     period = request.args.get("period", "90D")
-    analytics = performance_analytics(trades, cash, period)
+    analytics = performance_analytics(trades, cash, period, dividends)
 
 
     # ✅ allocation chart (with cash)    
@@ -881,6 +1035,7 @@ def index():
         "index.html",
         transactions=trades.to_dict("records"),
         cash_flows=cash.to_dict("records"),
+        dividends=dividends.to_dict("records"),
         account_positions=account_positions,
         activity=activity,
         account_bal = account_balances(activity),
@@ -952,9 +1107,11 @@ def download_dataset(file_format):
         return {"error": "Supported formats are csv and json"}, 400
 
     trades, cash = load_data()
+    dividends = load_dividends()
     dataset = {
         "transactions": trades.to_dict("records"),
-        "cash_flows": cash.to_dict("records")
+        "cash_flows": cash.to_dict("records"),
+        "dividends": dividends.to_dict("records")
     }
 
     if file_format == "json":
@@ -967,8 +1124,13 @@ def download_dataset(file_format):
 
     trade_rows = trades.assign(dataset="transactions")
     cash_rows = cash.assign(dataset="cash_flows")
-    columns = sorted(set(trade_rows.columns) | set(cash_rows.columns))
-    csv_data = pd.concat([trade_rows.reindex(columns=columns), cash_rows.reindex(columns=columns)], ignore_index=True)
+    dividend_rows = dividends.assign(dataset="dividends")
+    columns = sorted(set(trade_rows.columns) | set(cash_rows.columns) | set(dividend_rows.columns))
+    csv_data = pd.concat([
+        trade_rows.reindex(columns=columns),
+        cash_rows.reindex(columns=columns),
+        dividend_rows.reindex(columns=columns),
+    ], ignore_index=True)
     return Response(
         csv_data.to_csv(index=False),
         mimetype="text/csv",
@@ -1226,6 +1388,17 @@ def upload():
     except Exception as e:
         print("Upload error:", e)
 
+    return redirect("/")
+
+
+@app.route("/upload_fidelity", methods=["POST"])
+def upload_fidelity():
+    file = request.files.get("fidelity_file")
+    if file and file.filename.lower().endswith(".csv"):
+        try:
+            import_fidelity_activity(file)
+        except Exception as e:
+            print("Fidelity upload error:", e)
     return redirect("/")
 # ---------------------------
 if __name__ == "__main__":

@@ -677,6 +677,12 @@ Portfolio Growth: ${{ analytics.total_pnl }}
     <button type="submit">Upload</button>
 </form>
 
+<h3>Upload Fidelity 401K Activity</h3>
+<form method="POST" action="/upload_fidelity" enctype="multipart/form-data">
+    <input type="file" name="fidelity_file" accept=".csv" required>
+    <button type="submit">Upload Fidelity CSV</button>
+</form>
+
 
 <!-- ✅ FILTER + SEARCH -->
 <input id="searchBox" placeholder="Search..." onkeyup="filterTable()">

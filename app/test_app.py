@@ -6,6 +6,7 @@ mocked so tests run fully offline and deterministically.
 """
 import os
 import tempfile
+from io import BytesIO
 from html.parser import HTMLParser
 
 import pytest
@@ -119,6 +120,110 @@ def test_dataset_downloads_include_transactions_and_cash(client):
 def test_dataset_download_rejects_unknown_format(client):
     response = client.get("/download_dataset/xml")
     assert response.status_code == 400
+
+
+def test_fidelity_401k_upload_imports_activity(client):
+    fidelity_csv = """Run Date,Account,Account Number,Action,Symbol,Description,Type,Price ($),Quantity,Commission,Fees ($),Accrued Interest,Amount ($),Settlement Date
+8/17/2026,BrokerageLink,123,YOU BOUGHT TEST CORP,TEST,Test Corp,Stocks,10.00,5,,,,-50.00,8/19/2026
+7/31/2026,BrokerageLink,123,DIVIDEND RECEIVED FUND,FUND,Fund,Cash,1,0,,,,12.50,
+7/31/2026,BrokerageLink Roth,456,REINVESTMENT FUND,FUND,Fund,Cash,1,-3,,,,-3.00,
+"""
+
+    response = client.post(
+        "/upload_fidelity",
+        data={"fidelity_file": (BytesIO(fidelity_csv.encode()), "activity.csv")},
+        content_type="multipart/form-data",
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    conn = main.get_db_connection()
+    transactions = conn.execute(
+        "SELECT account, symbol, type, shares FROM transactions ORDER BY id"
+    ).fetchall()
+    cash_flows = conn.execute(
+        "SELECT account, description, amount FROM cash_flows ORDER BY id"
+    ).fetchall()
+    dividends = conn.execute(
+        "SELECT account, account_number, symbol, quantity, amount FROM dividends ORDER BY id"
+    ).fetchall()
+    account_details = {
+        row[0]: row[1]
+        for row in conn.execute("SELECT name, account_number FROM accounts ORDER BY name")
+    }
+    accounts = [row[0] for row in conn.execute("SELECT name FROM accounts ORDER BY name")]
+    conn.close()
+
+    assert [(row[0], row[1], row[2], row[3]) for row in transactions] == [
+        ("BrokerageLink", "TEST", "BUY", 5.0),
+        ("BrokerageLink Roth", "FUND", "BUY", 3.0),
+    ]
+    assert list(cash_flows) == []
+    assert [(row[0], row[1], row[2], row[3], row[4]) for row in dividends] == [
+        ("BrokerageLink", "123", "FUND", 0.0, 12.5),
+    ]
+    assert accounts == ["BrokerageLink", "BrokerageLink Roth"]
+    assert account_details == {"BrokerageLink": "123", "BrokerageLink Roth": "456"}
+
+
+def test_fidelity_import_requires_dividend_zero_quantity_and_purchase_negative_amount(client):
+    fidelity_csv = """Run Date,Account,Account Number,Action,Symbol,Description,Type,Price ($),Quantity,Commission,Fees ($),Accrued Interest,Amount ($),Settlement Date
+8/17/2026,401k,123,DIVIDEND RECEIVED FUND,FUND,Fund,Distributions,1,2,,,,12.50,
+8/17/2026,401k,123,YOU BOUGHT FDRXX - CASH,FDRXX,Fidelity Cash,Purchase,1,5,,,,5,8/19/2026
+8/17/2026,401k,123,YOU BOUGHT FDRXX - CASH,FDRXX,Fidelity Cash,Purchase,1,5,,,,-5,8/19/2026
+8/17/2026,401k,123,DIVIDEND RECEIVED FUND,FUND,Fund,Distributions,1,0,,,,12.50,
+"""
+
+    response = client.post(
+        "/upload_fidelity",
+        data={"fidelity_file": (BytesIO(fidelity_csv.encode()), "activity.csv")},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 302
+    conn = main.get_db_connection()
+    transactions = conn.execute(
+        "SELECT symbol, type, shares FROM transactions"
+    ).fetchall()
+    dividends = conn.execute(
+        "SELECT symbol, quantity, amount FROM dividends"
+    ).fetchall()
+    conn.close()
+
+    assert [(row[0], row[1], row[2]) for row in transactions] == [("FDRXX", "BUY", 5.0)]
+    assert [(row[0], row[1], row[2]) for row in dividends] == [("FUND", 0.0, 12.5)]
+
+
+def test_realized_pnl_uses_same_day_trade_order_and_account_scope(client):
+    add_account(client, "BrokerageLink")
+    add_account(client, "BrokerageLink Roth")
+    add_trade(
+        client, account="BrokerageLink", date="2026-03-03", symbol="QBTS",
+        action="BUY", shares="8000", price="17.52", fees="0"
+    )
+    add_trade(
+        client, account="BrokerageLink", date="2026-03-03", symbol="QBTS",
+        action="SELL", shares="8000", price="18.15", fees="0"
+    )
+    add_trade(
+        client, account="BrokerageLink Roth", date="2026-03-03", symbol="QBTS",
+        action="SELL", shares="1", price="18.15", fees="0"
+    )
+
+    trades, _ = main.load_data()
+    enriched = main.enrich_trades(trades)
+    brokerage_sell = enriched[
+        (enriched["account"] == "BrokerageLink") &
+        (enriched["type"] == "SELL")
+    ].iloc[0]
+    roth_sell = enriched[
+        (enriched["account"] == "BrokerageLink Roth") &
+        (enriched["type"] == "SELL")
+    ].iloc[0]
+
+    assert round(brokerage_sell["realized_pnl"], 2) == 5040.00
+    assert round(brokerage_sell["realized_pct"], 2) == 3.60
+    assert roth_sell["realized_pnl"] == 0
 
 
 def test_dashboard_shows_total_portfolio_value_and_return_label(client):
