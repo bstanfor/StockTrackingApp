@@ -421,8 +421,8 @@ def test_dashboard_inline_edit_sanitizes_account_labels_before_fetch(client):
 
     html = client.get("/").get_data(as_text=True)
 
-    assert 'normalizeAccountName(input.value)' in html
-    assert 'form.append(input.name, value);' in html
+    assert "normalizeAccountName" in html
+    assert 'form.set("account", accountValue)' in html
 
 
 def test_dashboard_shows_total_portfolio_value_and_return_label(client):

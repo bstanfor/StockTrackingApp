@@ -429,6 +429,30 @@ def normalize_account_name(value):
     value = re.sub(r"\s*\(Acct\s*#\s*[^)]*\)\s*$", "", value, flags=re.IGNORECASE)
     return value.strip()
 
+
+def normalize_transaction_update_payload(form):
+    account_name = normalize_account_name(form.get("account"))
+    if not account_name:
+        account_name = ""
+
+    shares = safe_float(form.get("shares"))
+    price = safe_float(form.get("price"))
+    fees = safe_float(form.get("fees"))
+    lot = int(safe_float(form.get("lot")) or 0)
+    symbol = str(form.get("stock") or "").strip()
+    action = str(form.get("action") or "").strip().upper()
+
+    return {
+        "account": account_name,
+        "date": str(form.get("date") or "").strip(),
+        "stock": symbol,
+        "action": action,
+        "shares": shares,
+        "price": price,
+        "fees": fees,
+        "lot": lot,
+    }
+
 # ---------------------------
 # ANALYTICS
 # ---------------------------
@@ -1533,27 +1557,27 @@ def edit(id):
 
 @app.route("/update/<int:id>", methods=["POST"])
 def update(id):
-    account_name = normalize_account_name(request.form.get("account"))
-    if not account_name:
+    payload = normalize_transaction_update_payload(request.form)
+    if not payload["account"]:
         current = conn = get_db_connection()
         current_row = conn.execute("SELECT account FROM transactions WHERE id=?", (id,)).fetchone()
         conn.close()
-        account_name = current_row["account"] if current_row else ""
+        payload["account"] = current_row["account"] if current_row else ""
 
     conn = get_db_connection()
-    conn.execute("INSERT OR IGNORE INTO accounts(name) VALUES (?)", (account_name,))
+    conn.execute("INSERT OR IGNORE INTO accounts(name) VALUES (?)", (payload["account"],))
     conn.execute("""
     UPDATE transactions SET account=?,date=?,symbol=?,type=?,shares=?,price=?,fees=?,lot_id=?
     WHERE id=?
     """, (
-        account_name,
-        request.form["date"],
-        request.form["stock"],
-        request.form["action"],
-        safe_float(request.form["shares"]),
-        safe_float(request.form["price"]),
-        safe_float(request.form["fees"]),
-        int(request.form.get("lot", 0) or 0),
+        payload["account"],
+        payload["date"],
+        payload["stock"],
+        payload["action"],
+        payload["shares"],
+        payload["price"],
+        payload["fees"],
+        payload["lot"],
         id
     ))
     conn.commit()
