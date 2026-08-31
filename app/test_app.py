@@ -415,6 +415,16 @@ def test_realized_pnl_uses_same_day_trade_order_and_account_scope(client):
     assert roth_sell["realized_pnl"] == 0
 
 
+def test_dashboard_inline_edit_sanitizes_account_labels_before_fetch(client):
+    add_account(client, "BrokerageLink")
+    add_trade(client, account="BrokerageLink", shares="10", price="150", fees="1")
+
+    html = client.get("/").get_data(as_text=True)
+
+    assert 'normalizeAccountName(input.value)' in html
+    assert 'form.append(input.name, value);' in html
+
+
 def test_dashboard_shows_total_portfolio_value_and_return_label(client):
     add_account(client, "Brokerage")
     add_cash(client, amount="5000")

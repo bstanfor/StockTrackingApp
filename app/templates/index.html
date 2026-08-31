@@ -1085,8 +1085,16 @@ function inlineEdit(button, id) {
 
 function saveInlineEdit(row, id, button) {
     const form = new FormData();
-    row.querySelectorAll("input").forEach(input => form.append(input.name, input.value));
-    form.append("action", row.children[4].innerText.trim()); form.append("lot", row.children[0].innerText.trim() || "0");
+    row.querySelectorAll("input").forEach((input) => {
+        const value = ["account", "account_name", "old_name", "new_name"].includes(input.name)
+            ? normalizeAccountName(input.value)
+            : input.value;
+        form.append(input.name, value);
+    });
+    form.append("action", row.children[4].innerText.trim());
+    form.append("lot", row.children[0].innerText.trim() || "0");
+    const accountValue = normalizeAccountName(row.querySelector('[name="account"]')?.value || "");
+    if (accountValue) form.set("account", accountValue);
     fetch(`/update/${id}`, {method: "POST", body: form}).then(response => { if (response.ok) location.reload(); else alert("Unable to save transaction"); });
 }
 
