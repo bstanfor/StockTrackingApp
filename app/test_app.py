@@ -613,6 +613,38 @@ def test_update_trade_changes_values(client):
     assert trades.iloc[0]["shares"] == 5
 
 
+def test_update_trade_strips_account_label_suffix(client):
+    add_account(client, "BrokerageLink")
+    conn = main.get_db_connection()
+    conn.execute(
+        "UPDATE accounts SET account_number=? WHERE name=?",
+        ("653206563", "BrokerageLink"),
+    )
+    conn.execute(
+        "INSERT INTO transactions(account,date,symbol,type,shares,price,fees,lot_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        ("BrokerageLink", "2026-01-05", "AAPL", "BUY", 10, 150, 1, 0),
+    )
+    conn.commit()
+    trade_id = conn.execute("SELECT id FROM transactions WHERE account=? ORDER BY id DESC LIMIT 1", ("BrokerageLink",)).fetchone()[0]
+    conn.close()
+
+    response = client.post(f"/update/{trade_id}", data={
+        "account": "BrokerageLink (Acct # 653206563)",
+        "date": "2026-01-06",
+        "stock": "MSFT",
+        "action": "BUY",
+        "shares": "5",
+        "price": "200",
+        "fees": "0",
+        "lot": "0",
+    }, follow_redirects=True)
+
+    assert response.status_code == 200
+    trades, _ = main.load_data()
+    assert trades.iloc[0]["account"] == "BrokerageLink"
+    assert trades.iloc[0]["symbol"] == "MSFT"
+
+
 def test_delete_trade_removes_row(client):
     add_account(client, "Brokerage")
     add_trade(client)

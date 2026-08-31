@@ -802,7 +802,7 @@ Portfolio Growth: ${{ analytics.total_pnl }}
 </td>
 
 <!-- ✅ ACCOUNT -->
-<td>{{ account_label(t.account, account_details) if t.account else "-" }}</td>
+<td data-account="{{ t.account or '' }}">{{ account_label(t.account, account_details) if t.account else "-" }}</td>
 
 <!-- ✅ SYMBOL -->
 <td><b>{{ t.symbol or "-" }}</b></td>
@@ -1045,7 +1045,10 @@ function inlineEdit(button, id) {
     const fields = {1: "date", 2: "account", 3: "stock", 5: "shares", 6: "price", 8: "fees"};
     Object.entries(fields).forEach(([index, name]) => {
         const cell = row.children[index];
-        const value = cell.innerText.replace("$", "").trim();
+        let value = cell.innerText.replace("$", "").trim();
+        if (name === "account") {
+            value = cell.dataset.account || value.replace(/\s*\(Acct\s*#.*?\)\s*$/i, "").trim();
+        }
         cell.innerHTML = `<input class="inline-input" name="${name}" value="${value === "-" ? "" : value}">`;
     });
     button.textContent = "Save";

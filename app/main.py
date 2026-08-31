@@ -421,6 +421,14 @@ def account_label(account, account_details):
     account_number = account_details.get(account)
     return f"{account} (Acct # {account_number})" if account_number else account
 
+
+def normalize_account_name(value):
+    value = str(value or "").strip()
+    if not value:
+        return ""
+    value = re.sub(r"\s*\(Acct\s*#\s*[^)]*\)\s*$", "", value, flags=re.IGNORECASE)
+    return value.strip()
+
 # ---------------------------
 # ANALYTICS
 # ---------------------------
@@ -1524,19 +1532,27 @@ def edit(id):
 
 @app.route("/update/<int:id>", methods=["POST"])
 def update(id):
+    account_name = normalize_account_name(request.form.get("account"))
+    if not account_name:
+        current = conn = get_db_connection()
+        current_row = conn.execute("SELECT account FROM transactions WHERE id=?", (id,)).fetchone()
+        conn.close()
+        account_name = current_row["account"] if current_row else ""
+
     conn = get_db_connection()
+    conn.execute("INSERT OR IGNORE INTO accounts(name) VALUES (?)", (account_name,))
     conn.execute("""
     UPDATE transactions SET account=?,date=?,symbol=?,type=?,shares=?,price=?,fees=?,lot_id=?
     WHERE id=?
     """, (
-        request.form["account"],
+        account_name,
         request.form["date"],
         request.form["stock"],
         request.form["action"],
         safe_float(request.form["shares"]),
         safe_float(request.form["price"]),
         safe_float(request.form["fees"]),
-        int(request.form["lot"]),
+        int(request.form.get("lot", 0) or 0),
         id
     ))
     conn.commit()
