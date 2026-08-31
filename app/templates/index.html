@@ -1005,11 +1005,30 @@ function updateActivityWindow() {
     return;
 }
 
+function syncActivityColumnCheckboxes() {
+    document.querySelectorAll("#activityTab .column-menu input[type='checkbox'][data-column]").forEach((checkbox) => {
+        const column = Number(checkbox.dataset.column);
+        const header = document.querySelectorAll("#activityTab thead th")[column];
+        const firstRowCell = document.querySelector("#activityTab tbody tr")?.children[column];
+        const isVisible = !!(header && getComputedStyle(header).display !== "none") ||
+            !!(firstRowCell && getComputedStyle(firstRowCell).display !== "none");
+        checkbox.checked = isVisible;
+    });
+}
+
 function toggleColumn(control) {
     const column = Number(control.dataset.column);
-    document.querySelectorAll("#activityTab table tr").forEach(row => {
-        if (row.children[column]) row.children[column].style.display = control.checked ? "" : "none";
+
+    document.querySelectorAll("#activityTab thead th").forEach((header, index) => {
+        if (index === column) header.style.display = control.checked ? "" : "none";
     });
+
+    document.querySelectorAll("#activityTab tbody tr").forEach(row => {
+        const cell = row.children[column];
+        if (cell) cell.style.display = control.checked ? "" : "none";
+    });
+
+    syncActivityColumnCheckboxes();
 }
 
 function exportActivity(format) {
@@ -1280,6 +1299,7 @@ window.onload=()=>{
 
     const activityScroller = document.querySelector("#activityTab .virtual-scroll");
     if (activityScroller) activityScroller.addEventListener("scroll", updateActivityWindow);
+    syncActivityColumnCheckboxes();
     updateActivityWindow();
 };
 
