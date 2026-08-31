@@ -172,6 +172,17 @@ def fidelity_action(action):
     return None
 
 
+def is_fidelity_core_cash_redemption(action, symbol):
+    action_text = str(action or "").upper()
+    symbol_text = str(symbol or "").strip().upper()
+    return (
+        symbol_text == "FDRXX"
+        and "REDEMPTION FROM CORE ACCOUNT" in action_text
+        and "FDRXX" in action_text
+        and "(CASH)" in action_text
+    )
+
+
 def fidelity_account_number(value):
     value = str(value or "").strip()
     return "" if value.lower() in {"", "nan", "none"} else value
@@ -285,6 +296,8 @@ def import_fidelity_activity(file):
             )
             if is_core_cash_reinvestment:
                 action = "BUY"
+            if is_fidelity_core_cash_redemption(row.get("action", ""), row.get("symbol", "")):
+                continue
             if action is None or pd.isna(date):
                 continue
 
