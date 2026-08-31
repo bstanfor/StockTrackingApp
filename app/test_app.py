@@ -5,6 +5,7 @@ lookups, and the index dashboard rendering. Network calls to yfinance are
 mocked so tests run fully offline and deterministically.
 """
 import os
+import re
 import tempfile
 from io import BytesIO
 from html.parser import HTMLParser
@@ -96,6 +97,29 @@ def test_index_reflects_trade_and_cash(client):
     assert resp.status_code == 200
     assert "AAPL" in html
     assert "Brokerage" in html
+
+
+def test_activity_column_menu_matches_current_table_contract(client):
+    resp = client.get("/")
+    html = resp.get_data(as_text=True)
+
+    assert resp.status_code == 200
+    assert "syncActivityColumnCheckboxes" in html
+    assert "toggleColumn(control)" in html
+
+    column_inputs = re.findall(r'<input[^>]*data-column="(\d+)"[^>]*>', html)
+    expected_optional_columns = {"0", "1", "2", "3", "4", "10", "13", "14", "15", "16", "17", "18", "19", "20"}
+    assert set(column_inputs) == expected_optional_columns
+
+    checked_columns = re.findall(r'<input[^>]*data-column="(\d+)"[^>]*checked[^>]*>', html)
+    assert set(checked_columns) == {"0", "1", "2", "3", "4", "10"}
+
+    for required_label in [
+        "Lot", "Date", "Account", "Symbol", "Action", "P&L",
+        "Account #", "Description", "Fidelity Action", "Fidelity Type",
+        "Commission", "Accrued Interest", "Source Amount", "Settlement Date",
+    ]:
+        assert required_label in html
 
 
 def test_dataset_downloads_include_transactions_and_cash(client):
