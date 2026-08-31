@@ -1029,8 +1029,19 @@ function normalizeAccountName(value) {
 }
 
 function sanitizeAccountInputs(form) {
-    const fields = form.querySelectorAll('[name="account"], [name="account_name"], [name="old_name"], [name="new_name"]');
-    fields.forEach((field) => {
+    const accountFields = form.querySelectorAll('[name="account"]');
+    accountFields.forEach((field) => {
+        if (field.multiple) {
+            Array.from(field.selectedOptions).forEach((option) => {
+                option.value = normalizeAccountName(option.value);
+            });
+            return;
+        }
+        field.value = normalizeAccountName(field.value);
+    });
+
+    const otherFields = form.querySelectorAll('[name="account_name"], [name="old_name"], [name="new_name"]');
+    otherFields.forEach((field) => {
         field.value = normalizeAccountName(field.value);
     });
 }

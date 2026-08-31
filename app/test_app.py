@@ -613,6 +613,29 @@ def test_update_trade_changes_values(client):
     assert trades.iloc[0]["shares"] == 5
 
 
+def test_account_filter_accepts_labelled_names_and_preserves_multi_select(client):
+    add_account(client, "BrokerageLink")
+    add_account(client, "BrokerageLink Roth")
+    conn = main.get_db_connection()
+    conn.execute(
+        "UPDATE accounts SET account_number='653206563' WHERE name='BrokerageLink'"
+    )
+    conn.execute(
+        "UPDATE accounts SET account_number='456' WHERE name='BrokerageLink Roth'"
+    )
+    conn.commit()
+    conn.close()
+
+    resp = client.get(
+        "/?account=BrokerageLink+%28Acct+%23+653206563%29&account=BrokerageLink+Roth+%28Acct+%23+456%29"
+    )
+
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert "BrokerageLink" in html
+    assert "BrokerageLink Roth" in html
+
+
 def test_update_trade_strips_account_label_suffix(client):
     add_account(client, "BrokerageLink")
     conn = main.get_db_connection()

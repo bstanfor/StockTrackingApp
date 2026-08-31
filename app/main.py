@@ -1242,12 +1242,13 @@ def index():
     price_cache.clear()
 
     # ✅ get selected accounts (multi-select)
-    selected_accounts = request.args.getlist("account")
-    
+    selected_accounts = [normalize_account_name(name) for name in request.args.getlist("account")]
+    selected_accounts = [name for name in selected_accounts if name]
+
     # ✅ load accounts from DB (NEW)
     db_accounts = load_accounts()
     account_details = load_account_details()
-        
+
     # ✅ fallback to All
     if not selected_accounts or "All" in selected_accounts:
         selected_accounts = db_accounts
