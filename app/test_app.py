@@ -274,9 +274,12 @@ def test_fidelity_core_cash_purchase_is_buy_when_matching_dividend(client):
     assert [(row["symbol"], row["type"], row["shares"])
             for _, row in trades.iterrows()] == [("FDRXX", "BUY", 125.0)]
     assert [(row["account"], row["description"], row["amount"]) for _, row in cash.iterrows()] == [
-        ("401k", "CONTRIBUTION", 125.0)
+        ("401k", "DIVIDEND", 125.0)
     ]
-    assert dividends.empty
+    assert [(row["account"], row["symbol"], row["quantity"], row["amount"], row["description"])
+            for _, row in dividends.iterrows()] == [
+        ("401k", "FDRXX", 0.0, 125.0, "Fidelity Government Cash Reserves")
+    ]
 
 
 def test_fidelity_core_cash_redemption_is_ignored_when_symbol_is_fdrxx(client):

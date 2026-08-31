@@ -320,34 +320,6 @@ def import_fidelity_activity(file):
             quantity = safe_float(row["quantity"])
             signed_amount = safe_float(row["amount ($)"])
             account = str(row["account"]).strip()
-            row_date = date.strftime("%Y-%m-%d") if not pd.isna(date) else ""
-            is_core_cash_reinvestment = (
-                is_fidelity_core_cash_action(row.get("action", ""))
-                and quantity != 0
-                and signed_amount < 0
-                and (account, row_date, abs(quantity)) in core_cash_dividends
-            )
-            action = fidelity_transaction_type(
-                row["action"], row.get("type", ""), quantity, signed_amount
-            )
-            if is_core_cash_reinvestment:
-                action = "BUY"
-            if is_fidelity_fdrxx_cash_morning_trade(row.get("action", ""), row.get("symbol", "")):
-                continue
-            if is_fidelity_fdrxx_cash_reinvestment(row.get("action", ""), row.get("symbol", "")):
-                continue
-            if is_fidelity_fdrxx_cash_dividend(row.get("action", ""), row.get("symbol", ""), quantity):
-                conn.execute(
-                    "INSERT INTO cash_flows(account,date,amount,description) VALUES(?,?,?,?)",
-                    (account, date.strftime("%Y-%m-%d"), abs(signed_amount), "CONTRIBUTION"),
-                )
-                imported += 1
-                continue
-            if is_fidelity_core_cash_redemption(row.get("action", ""), row.get("symbol", "")):
-                continue
-            if action is None or pd.isna(date):
-                continue
-
             account_number = fidelity_account_number(row["account number"])
             symbol = str(row["symbol"]).strip().upper()
             shares = abs(quantity)
@@ -366,6 +338,53 @@ def import_fidelity_activity(file):
             fidelity_description = str(row.get("description", "") or "").strip()
             fidelity_type = str(row.get("type", "") or "").strip()
             fidelity_action_text = str(row.get("action", "") or "").strip()
+            row_date = date.strftime("%Y-%m-%d") if not pd.isna(date) else ""
+            is_core_cash_reinvestment = (
+                is_fidelity_core_cash_action(row.get("action", ""))
+                and quantity != 0
+                and signed_amount < 0
+                and (account, row_date, abs(quantity)) in core_cash_dividends
+            )
+            action = fidelity_transaction_type(
+                row["action"], row.get("type", ""), quantity, signed_amount
+            )
+            if is_core_cash_reinvestment:
+                action = "BUY"
+            if is_fidelity_fdrxx_cash_morning_trade(row.get("action", ""), row.get("symbol", "")):
+                continue
+            if is_fidelity_fdrxx_cash_reinvestment(row.get("action", ""), row.get("symbol", "")):
+                continue
+            if is_fidelity_fdrxx_cash_dividend(row.get("action", ""), row.get("symbol", ""), quantity):
+                conn.execute(
+                    "INSERT INTO dividends(account,account_number,date,symbol,quantity,amount,description,type,fidelity_action,price,fees,commission,accrued_interest,source_amount,settlement_date) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (
+                        account,
+                        account_number or None,
+                        date.strftime("%Y-%m-%d"),
+                        symbol or "FDRXX",
+                        quantity,
+                        abs(signed_amount),
+                        fidelity_description,
+                        fidelity_type,
+                        fidelity_action_text,
+                        price,
+                        fees,
+                        commission,
+                        accrued_interest,
+                        signed_amount,
+                        settlement_date,
+                    ),
+                )
+                conn.execute(
+                    "INSERT INTO cash_flows(account,date,amount,description) VALUES(?,?,?,?)",
+                    (account, date.strftime("%Y-%m-%d"), abs(signed_amount), "DIVIDEND"),
+                )
+                imported += 1
+                continue
+            if is_fidelity_core_cash_redemption(row.get("action", ""), row.get("symbol", "")):
+                continue
+            if action is None or pd.isna(date):
+                continue
 
             conn.execute(
                 "INSERT OR IGNORE INTO accounts(name, account_number) VALUES (?, ?)",
