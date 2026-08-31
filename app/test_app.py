@@ -678,6 +678,48 @@ def test_update_trade_strips_account_label_suffix(client):
     assert trades.iloc[0]["symbol"] == "MSFT"
 
 
+def test_inline_editor_browser_flow_updates_shares_and_fees_without_label_suffix(client):
+    add_account(client, "BrokerageLink")
+    conn = main.get_db_connection()
+    conn.execute(
+        "UPDATE accounts SET account_number=? WHERE name=?",
+        ("653206563", "BrokerageLink"),
+    )
+    conn.execute(
+        "INSERT INTO transactions(account,date,symbol,type,shares,price,fees,lot_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        ("BrokerageLink", "2026-01-05", "AAPL", "BUY", 10, 150, 1.5, 0),
+    )
+    conn.commit()
+    trade_id = conn.execute(
+        "SELECT id FROM transactions WHERE account=? ORDER BY id DESC LIMIT 1",
+        ("BrokerageLink",),
+    ).fetchone()[0]
+    conn.close()
+
+    response = client.post(
+        f"/update/{trade_id}",
+        data={
+            "account": "BrokerageLink (Acct # 653206563)",
+            "date": "2026-01-06",
+            "stock": "AAPL",
+            "action": "BUY",
+            "shares": "12.5",
+            "price": "155",
+            "fees": "2.75",
+            "lot": "0",
+        },
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    trades, _ = main.load_data()
+    row = trades.iloc[0]
+    assert row["account"] == "BrokerageLink"
+    assert row["shares"] == 12.5
+    assert row["fees"] == 2.75
+    assert "Acct #" not in row["account"]
+
+
 def test_delete_trade_removes_row(client):
     add_account(client, "Brokerage")
     add_trade(client)
