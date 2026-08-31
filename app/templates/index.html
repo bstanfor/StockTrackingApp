@@ -1024,6 +1024,23 @@ function exportActivity(format) {
     link.download = `activity.${extension}`; link.click(); URL.revokeObjectURL(link.href);
 }
 
+function normalizeAccountName(value) {
+    return String(value || "").replace(/\s*\(Acct\s*#.*?\)\s*$/i, "").trim();
+}
+
+function sanitizeAccountInputs(form) {
+    const fields = form.querySelectorAll('[name="account"], [name="account_name"], [name="old_name"], [name="new_name"]');
+    fields.forEach((field) => {
+        field.value = normalizeAccountName(field.value);
+    });
+}
+
+document.addEventListener("submit", (event) => {
+    const form = event.target;
+    if (!(form instanceof HTMLFormElement)) return;
+    sanitizeAccountInputs(form);
+});
+
 function resetWorkspace() { localStorage.removeItem("tab"); localStorage.removeItem("dark"); location.reload(); }
 
 async function showPositionDetail(account, symbol) {
