@@ -249,6 +249,25 @@ def is_fidelity_core_cash_action(action):
     return "PURCHASE INTO CORE ACCOUNT" in action_text and "FDRXX" in action_text
 
 
+def is_fidelity_fdrxx_cash_reinvestment(action, symbol):
+    action_text = str(action or "").upper()
+    return (
+        str(symbol or "").strip().upper() == "FDRXX"
+        and "REINVESTMENT FIDELITY GOVERNMENT CASH RESERVES" in action_text
+        and "(CASH)" in action_text
+    )
+
+
+def is_fidelity_fdrxx_cash_dividend(action, symbol, quantity):
+    action_text = str(action or "").upper()
+    return (
+        str(symbol or "").strip().upper() == "FDRXX"
+        and "DIVIDEND RECEIVED FIDELITY GOVERNMENT CASH RESERVES" in action_text
+        and "(CASH)" in action_text
+        and float(quantity or 0) == 0
+    )
+
+
 def is_fidelity_core_cash_dividend(action):
     action_text = str(action or "").upper()
     return "DIVIDEND RECEIVED FIDELITY GOVERNMENT CASH RESERVES" in action_text and "FDRXX" in action_text
@@ -296,6 +315,15 @@ def import_fidelity_activity(file):
             )
             if is_core_cash_reinvestment:
                 action = "BUY"
+            if is_fidelity_fdrxx_cash_reinvestment(row.get("action", ""), row.get("symbol", "")):
+                continue
+            if is_fidelity_fdrxx_cash_dividend(row.get("action", ""), row.get("symbol", ""), quantity):
+                conn.execute(
+                    "INSERT INTO cash_flows(account,date,amount,description) VALUES(?,?,?,?)",
+                    (account, date.strftime("%Y-%m-%d"), abs(signed_amount), "CONTRIBUTION"),
+                )
+                imported += 1
+                continue
             if is_fidelity_core_cash_redemption(row.get("action", ""), row.get("symbol", "")):
                 continue
             if action is None or pd.isna(date):

@@ -297,6 +297,32 @@ def test_fidelity_core_cash_redemption_is_ignored_when_symbol_is_fdrxx(client):
     ]
 
 
+def test_fidelity_reinvestment_fdrxx_is_not_counted_as_contribution(client):
+    fidelity_csv = """Run Date,Account,Account Number,Action,Symbol,Description,Type,Price ($),Quantity,Commission,Fees ($),Accrued Interest,Amount ($),Settlement Date
+8/17/2026,401k,123,REINVESTMENT FIDELITY GOVERNMENT CASH RESERVES (FDRXX) (Cash),FDRXX,Fidelity Government Cash Reserves,Cash,1,50,,,,-50.00,
+"""
+
+    response = client.post(
+        "/upload_fidelity",
+        data={"fidelity_file": (BytesIO(fidelity_csv.encode()), "activity.csv")},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 302
+    trades, cash = main.load_data()
+
+    assert cash.empty
+    assert [(row["symbol"], row["type"], row["shares"]) for _, row in trades.iterrows()] == [
+        ("FDRXX", "BUY", 50.0)
+    ]
+    assert main.fidelity_transaction_type(
+        "REINVESTMENT FIDELITY GOVERNMENT CASH RESERVES (FDRXX) (Cash)",
+        "Cash",
+        50,
+        -50.0,
+    ) == "BUY"
+
+
 def test_brokeragelink_fdrxx_shares_are_reported_as_cash(client, monkeypatch):
     add_account(client, "BrokerageLink")
     add_cash(client, account="BrokerageLink", amount="1000")
