@@ -105,6 +105,13 @@ body.dark table { border-color: #444; }
 body.dark .header { background: #185c37; color: #ffffff; }
 body.dark .tab-btn { color: #eee; }
 body.dark .actions { background: #121212; }
+body.dark .positive { color: #67f0a5; }
+body.dark .negative { color: #ff8d8d; }
+body.dark .row-buy { background: rgba(32, 200, 104, 0.22); }
+body.dark .row-sell { background: rgba(220, 76, 76, 0.22); }
+body.dark .row-div { background: rgba(255, 198, 44, 0.18); }
+body.dark .row-cash-in { background: rgba(76, 164, 255, 0.20); }
+body.dark .row-cash-out { background: rgba(255, 128, 64, 0.18); }
 
 .tab { display: none; }
 
@@ -778,9 +785,7 @@ Portfolio Growth: ${{ analytics.total_pnl }}
 {% elif action == 'DIVIDEND' %}row-div
 {% elif action == 'CONTRIBUTION' %}row-cash-in
 {% elif action == 'WITHDRAWAL' %}row-cash-out
-<table>
-{% endif %}
-">
+{% endif %}">
 
 <!-- ✅ LOT ID -->
 <td>
