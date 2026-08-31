@@ -217,6 +217,9 @@ def fidelity_transaction_type(action, type_flag, quantity, amount):
     action_text = str(action or "").upper()
     type_text = str(type_flag or "").upper()
 
+    if "PURCHASE INTO CORE" in action_text and "MORNING TRADE" in action_text and "(CASH)" in action_text:
+        return None
+
     if "PURCHASE INTO CORE" in action_text and (
         "FDRXX" in action_text or "CASH" in action_text or "CORE" in type_text
     ):
@@ -244,9 +247,23 @@ def fidelity_transaction_type(action, type_flag, quantity, amount):
     return None
 
 
+def is_fidelity_fdrxx_cash_morning_trade(action, symbol):
+    action_text = str(action or "").upper()
+    return (
+        str(symbol or "").strip().upper() == "FDRXX"
+        and "PURCHASE INTO CORE ACCOUNT" in action_text
+        and "MORNING TRADE" in action_text
+        and "(CASH)" in action_text
+    )
+
+
 def is_fidelity_core_cash_action(action):
     action_text = str(action or "").upper()
-    return "PURCHASE INTO CORE ACCOUNT" in action_text and "FDRXX" in action_text
+    return (
+        "PURCHASE INTO CORE ACCOUNT" in action_text
+        and "FDRXX" in action_text
+        and "MORNING TRADE" not in action_text
+    )
 
 
 def is_fidelity_fdrxx_cash_reinvestment(action, symbol):
@@ -315,6 +332,8 @@ def import_fidelity_activity(file):
             )
             if is_core_cash_reinvestment:
                 action = "BUY"
+            if is_fidelity_fdrxx_cash_morning_trade(row.get("action", ""), row.get("symbol", "")):
+                continue
             if is_fidelity_fdrxx_cash_reinvestment(row.get("action", ""), row.get("symbol", "")):
                 continue
             if is_fidelity_fdrxx_cash_dividend(row.get("action", ""), row.get("symbol", ""), quantity):
