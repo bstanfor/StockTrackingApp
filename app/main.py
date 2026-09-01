@@ -805,7 +805,12 @@ def calculate_cash_flow(row):
     return 0
 
 def compute_metrics(trades, cash):
-    contributions = cash["amount"].sum() if cash is not None and not cash.empty else 0
+    contribution_cash = (
+        cash[cash["description"].map(is_contribution_description)]["amount"].sum()
+        if cash is not None and not cash.empty and "description" in cash.columns
+        else 0
+    )
+    contributions = contribution_cash
 
     if trades is None or len(trades) == 0:
         return {

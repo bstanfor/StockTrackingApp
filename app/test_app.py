@@ -392,6 +392,10 @@ def test_dashboard_analytics_normalizes_contribution_labels_and_totals_dividends
            VALUES (?, ?, ?, ?, ?, ?, ?)""",
         ("401K", "2026-07-03", "FUND", 0, 12.50, "Fund dividend", "Distributions"),
     )
+    conn.execute(
+        "INSERT INTO cash_flows(account,date,amount,description) VALUES(?,?,?,?)",
+        ("401K", "2026-07-03", 12.50, "DIVIDEND"),
+    )
     conn.commit()
     conn.close()
 
@@ -401,6 +405,27 @@ def test_dashboard_analytics_normalizes_contribution_labels_and_totals_dividends
 
     assert analytics["net_contributions"] == 1250.0
     assert analytics["total_dividends"] == 12.50
+
+
+def test_compute_metrics_excludes_dividend_cash_flows_from_contribution_total(client):
+    add_account(client, "BrokerageLink")
+    conn = main.get_db_connection()
+    conn.execute(
+        "INSERT INTO cash_flows(account,date,amount,description) VALUES(?,?,?,?)",
+        ("BrokerageLink", "2026-07-01", 1000.0, "CONTRIBUTION"),
+    )
+    conn.execute(
+        "INSERT INTO cash_flows(account,date,amount,description) VALUES(?,?,?,?)",
+        ("BrokerageLink", "2026-07-02", 26946.0, "DIVIDEND"),
+    )
+    conn.commit()
+    conn.close()
+
+    trades, cash = main.load_data()
+    metrics = main.compute_metrics(trades, cash)
+
+    assert metrics["total_cash"] == 1000.0
+    assert metrics["portfolio_value"] == 1000.0
 
 
 def test_dashboard_preserves_period_when_account_filter_changes(client):
