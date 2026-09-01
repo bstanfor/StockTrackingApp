@@ -467,7 +467,7 @@ def test_dashboard_custom_date_range_limits_contributions_and_dividends(client):
     assert analytics["total_dividends"] == 10.0
 
 
-def test_dashboard_counts_legacy_fidelity_core_cash_buys_as_contributions(client):
+def test_dashboard_excludes_legacy_fidelity_core_cash_buys_from_contributions(client):
     add_account(client, "BrokerageLink")
     conn = main.get_db_connection()
     conn.execute(
@@ -489,13 +489,10 @@ def test_dashboard_counts_legacy_fidelity_core_cash_buys_as_contributions(client
     trades = main.enrich_trades(trades)
     analytics = main.performance_analytics(trades, cash, "Y")
 
-    assert analytics["net_contributions"] == 681.04
+    assert analytics["net_contributions"] == 0
 
     activity = main.build_activity(trades, cash)
-    core_cash_row = activity[0]
-    assert core_cash_row["action"] == "CONTRIBUTION"
-    assert core_cash_row["trade_amount"] == 681.04
-    assert core_cash_row["net_cash_flow"] == 681.04
+    assert not any(row["action"] == "CONTRIBUTION" and row["symbol"] == "FDRXX" for row in activity)
 
 
 def test_realized_pnl_uses_same_day_trade_order_and_account_scope(client):
@@ -944,7 +941,7 @@ def test_equity_chart_includes_daily_cash_balance(monkeypatch):
     assert captured["values"].iloc[-1] == 1000.13
 
 
-def test_equity_chart_includes_legacy_fdrxx_contribution(monkeypatch):
+def test_equity_chart_excludes_legacy_fdrxx_contribution(monkeypatch):
     today = main.pd.Timestamp.today().normalize()
     trades = main.pd.DataFrame([{
         "id": 1,
@@ -973,7 +970,7 @@ def test_equity_chart_includes_legacy_fdrxx_contribution(monkeypatch):
     monkeypatch.setattr(main.px, "line", capture_line)
 
     assert main.equity_chart(trades, cash) == "chart"
-    assert captured["values"].iloc[-1] == 870.22
+    assert captured["values"].iloc[-1] == 0
 
 
 def test_compute_positions_after_partial_sell(client):

@@ -653,6 +653,9 @@ def compute_positions(trades, cash):
         # PROCESS TRADES
         # -------------------------
         for _, row in acc_trades.iterrows():
+            if is_legacy_core_cash_transaction(row):
+                continue
+
             sym = row["symbol"]
 
             inventory.setdefault(sym, [])
@@ -821,6 +824,7 @@ def compute_metrics(trades, cash):
         "total_pnl": 0
     }
 
+    trades = trades[~trades.apply(is_legacy_core_cash_transaction, axis=1)] if not trades.empty else trades
     trades["cf"] = trades.apply(calculate_cash_flow, axis=1)
 
     cash_balance = contributions + trades["cf"].sum()
@@ -917,6 +921,8 @@ def build_activity(trades, cash, dividends=None):
     # TRADES (ONLY trades)
     # ------------------------
     for _, t in trades.iterrows():
+        if is_legacy_core_cash_transaction(t):
+            continue
 
         shares = t.get("shares", 0)
         price = t.get("price", 0)
@@ -927,17 +933,7 @@ def build_activity(trades, cash, dividends=None):
         account = t.get("account", "default")
         action = t["type"]
 
-        if is_legacy_core_cash_transaction(t):
-            action = "CONTRIBUTION"
-            trade_amount = abs(t.get("source_amount", 0) or 0)
-            shares = 0
-            price = 0
-            fees = 0
-            net_cash = trade_amount
-            pl_dollar = 0
-            pl_percent = 0
-
-        elif t["type"] == "BUY":
+        if t["type"] == "BUY":
             net_cash = -(trade_amount + fees)
             pl_dollar = 0
             pl_percent = 0
@@ -1150,6 +1146,7 @@ def equity_chart(trades, cash, period="1Y", start_date=None, end_date=None):
 
 
     df = trades.copy()
+    df = df[~df.apply(is_legacy_core_cash_transaction, axis=1)] if not df.empty else df
     df["date"] = pd.to_datetime(df["date"]).dt.normalize()
 
 
@@ -1182,11 +1179,6 @@ def equity_chart(trades, cash, period="1Y", start_date=None, end_date=None):
 
     df = df[(df["date"] >= start) & (df["date"] < end)]
     cash_df = cash_df[(cash_df["date"] >= start) & (cash_df["date"] < end)]
-    core_cash_df = df[df.apply(is_legacy_core_cash_transaction, axis=1)].copy()
-    if not core_cash_df.empty:
-        core_cash_df["contribution"] = pd.to_numeric(
-            core_cash_df["source_amount"], errors="coerce"
-        ).abs().fillna(0)
 
     # ✅ Combine into timeline
     all_dates = pd.date_range(start=start, end=today, freq="D")
@@ -1204,10 +1196,6 @@ def equity_chart(trades, cash, period="1Y", start_date=None, end_date=None):
         # cash
         day_cash = cash_df[cash_df["date"] == date]
         running_value += day_cash["amount"].sum() if not cash_df.empty else 0
-
-        if not core_cash_df.empty:
-            day_core_cash = core_cash_df[core_cash_df["date"] == date]
-            running_value += day_core_cash["contribution"].sum()
 
         equity.loc[date, "value"] = running_value
 
@@ -1272,7 +1260,6 @@ def performance_analytics(trades, cash, period="1Y", dividends=None,
         all_time_cash[all_time_cash["description"].map(is_contribution_description)]["amount"].sum()
         if not all_time_cash.empty else 0
     )
-    all_time_contrib += legacy_core_cash_amounts(trades).sum()
     all_time_withdraw = abs(all_time_cash[all_time_cash["description"] == "WITHDRAWAL"]["amount"].sum()) if not all_time_cash.empty else 0
     invested_capital = all_time_contrib - all_time_withdraw
 
@@ -1306,7 +1293,6 @@ def performance_analytics(trades, cash, period="1Y", dividends=None,
         cash[cash["description"].map(is_contribution_description)]["amount"].sum()
         if not cash.empty else 0
     )
-    contrib += legacy_core_cash_amounts(trades).sum()
     withdraw = abs(cash[cash["description"] == "WITHDRAWAL"]["amount"].sum()) if not cash.empty else 0
 
     net_contribution = contrib - withdraw
