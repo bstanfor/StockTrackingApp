@@ -280,7 +280,17 @@ button:hover { border-color: var(--blue); color: var(--blue); }
 #activityDrawer.open { transform: translateX(0); }
 #drawerBackdrop { display: none; position: fixed; inset: 0; z-index: 1090; background: #12202a66; }
 #drawerBackdrop.open { display: block; }
-#activityDrawer form { display: grid; gap: 9px; margin-bottom: 24px; }
+#activityDrawer form { display: grid; gap: 12px; margin-bottom: 24px; }
+#activityDrawer .activity-section { border: 1px solid #dfe5ec; border-radius: 10px; padding: 12px 14px; background: rgba(255,255,255,0.55); }
+#activityDrawer .activity-section legend { font-weight: 700; padding: 0 6px; }
+#activityDrawer .field-grid { display: grid; grid-template-columns: 1fr; gap: 8px; }
+#activityDrawer .field-grid.two-up { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+#activityDrawer .field-grid > * { display: grid; gap: 4px; }
+#activityDrawer label { font-size: 12px; font-weight: 600; color: inherit; }
+#activityDrawer input,
+#activityDrawer select,
+#activityDrawer button { width: 100%; box-sizing: border-box; }
+body.dark #activityDrawer .activity-section { border-color: #3b4e5d; background: rgba(36,59,74,0.65); }
 .settings-panel { max-width: 680px; padding: 20px; background: var(--paper); border: 1px solid var(--line); border-radius: 6px; }
 .dataset-downloads { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0 24px; }
 .dataset-downloads form { margin: 0; }
@@ -624,79 +634,121 @@ Portfolio Growth: ${{ analytics.total_pnl }}
 
 <div id="positionDetail"></div>
 
-<!-- ✅ KEEP: Add Activity -->
-<h3>Add Activity</h3>
-
 <form method="POST" action="/add_trade" onsubmit="return validateSell()">
 
-<select name="account" required>
-{% for acc in accounts %}
-<option value="{{ acc }}">{{ account_label(acc, account_details) }}</option>
-{% endfor %}
-</select>
+<fieldset class="activity-section">
+    <legend>Entry type</legend>
+    <div class="field-grid">
+        <div>
+            <label for="transactionType">Transaction type</label>
+            <select id="transactionType" name="entry_type" onchange="toggleFields()" required>
+                <option value="stock">Stock Transaction</option>
+                <option value="cash">Cash Transaction</option>
+            </select>
+        </div>
+    </div>
+</fieldset>
 
-<input type="date" name="date" required>
+<div id="stockEntryFields">
+    <fieldset class="activity-section">
+        <legend>Stock details</legend>
+        <div class="field-grid">
+            <div>
+                <label>Account</label>
+                <select name="account" required>
+                {% for acc in accounts %}
+                <option value="{{ acc }}">{{ account_label(acc, account_details) }}</option>
+                {% endfor %}
+                </select>
+            </div>
 
-<input type="text" name="stock" placeholder="Symbol (optional for cash)">
+            <div>
+                <label>Date</label>
+                <input type="date" name="date" required>
+            </div>
 
-<select name="action" id="actionSelect" onchange="toggleFields()">
-    <option value="BUY">BUY</option>
-    <option value="SELL">SELL</option>
-    <option value="DIVIDEND">DIVIDEND</option>
-    <option value="CONTRIBUTION">CONTRIBUTION</option>
-    <option value="Starting Cash">STARTINGCASH</option>
-    <option value="WITHDRAWAL">WITHDRAWAL</option>
-</select>
+            <div>
+                <label>Symbol</label>
+                <input type="text" name="stock" placeholder="Symbol" required>
+            </div>
 
-<!-- ✅ ADD lot select -->
-<select name="lot_id" id="lotSelect" style="display:none;">
-    <option value="">Select Lot</option>
-</select>
+            <div>
+                <label>Buy / Sell</label>
+                <select name="action" id="actionSelect" onchange="toggleFields()">
+                    <option value="BUY">BUY</option>
+                    <option value="SELL">SELL</option>
+                </select>
+            </div>
 
-<!-- ✅  P&L preview -->
-<div id="pnlPreview" style="font-weight:bold; margin-top:5px;"></div>
+            <div id="lotSelectWrap" style="display:none;">
+                <label>Lot</label>
+                <select name="lot_id" id="lotSelect">
+                    <option value="">Select Lot</option>
+                </select>
+            </div>
 
-<div id="tradeFields">
-    <input type="number" step="0.01" name="shares" placeholder="Shares">
-    <input type="number" step="0.01" name="price" placeholder="Price">
+            <div class="field-grid two-up">
+                <div>
+                    <label>Shares</label>
+                    <input type="number" step="0.01" name="shares" placeholder="Shares" required>
+                </div>
+                <div>
+                    <label>Price</label>
+                    <input type="number" step="0.01" name="price" placeholder="Price" required>
+                </div>
+            </div>
+
+            <div>
+                <label>Fees</label>
+                <input type="number" step="0.01" name="fees" placeholder="Fees">
+            </div>
+        </div>
+        <div id="pnlPreview" style="font-weight:bold; margin-top:8px;"></div>
+    </fieldset>
 </div>
 
-<input type="number" step="0.01" name="fees" placeholder="Fees">
+<div id="cashEntryFields" style="display:none;">
+    <fieldset class="activity-section">
+        <legend>Cash details</legend>
+        <div class="field-grid">
+            <div>
+                <label>Account</label>
+                <select name="cash_account" required>
+                {% for acc in accounts %}
+                <option value="{{ acc }}">{{ account_label(acc, account_details) }}</option>
+                {% endfor %}
+                </select>
+            </div>
 
-<input type="number" step="0.01" name="amount" placeholder="Amount (for cash/dividend)">
+            <div>
+                <label>Date</label>
+                <input type="date" name="cash_date" required>
+            </div>
+
+            <div>
+                <label>Transaction</label>
+                <select name="cash_type" required>
+                    <option value="CONTRIBUTION">Contribution</option>
+                    <option value="DIVIDEND">Dividend</option>
+                    <option value="WITHDRAWAL">Withdrawal</option>
+                    <option value="STARTINGCASH">Starting Cash</option>
+                </select>
+            </div>
+
+            <div>
+                <label>Amount</label>
+                <input type="number" step="0.01" name="amount" placeholder="Amount" required>
+            </div>
+
+            <div>
+                <label>Symbol</label>
+                <input type="text" name="cash_symbol" placeholder="Symbol (optional, e.g. FDRXX)">
+            </div>
+        </div>
+    </fieldset>
+</div>
 
 <button type="submit">Add</button>
-
-</form>
-
-<h3>Add Cash Transaction</h3>
-
-<form method="POST" action="/add_cash">
-
-<select name="account" required>
-{% for acc in accounts %}
-<option value="{{ acc }}">{{ account_label(acc, account_details) }}</option>
-{% endfor %}
-</select>
-
-<input type="date" name="date" required>
-
-<select name="type" required>
-<option value="CONTRIBUTION">➕ Contribution</option>
-<option value="DIVIDEND">💰 Dividend</option>
-<option value="WITHDRAWAL">➖ Withdrawal</option>
-</select>
-
-<input type="number" step="0.01" name="amount" placeholder="Amount" required>
-
-<input type="text" name="symbol" placeholder="Symbol (optional for dividend)">
-
-<button type="submit">Add Cash</button>
-
-</form>
-										  
-
-<!-- ✅ KEEP: Upload -->
 <h3>Upload Transactions</h3>
 <form method="POST" action="/upload" enctype="multipart/form-data">
    <input type="file" name="file" accept=".csv,.xlsx" required>
@@ -773,7 +825,7 @@ Portfolio Growth: ${{ analytics.total_pnl }}
 {% set shares = t.shares or 0 %}
 {% set price = t.share_price or 0 %}
 {% set amount = t.trade_amount or 0 %}
-{% set fees = t.fees or 0 %}
+{% set fees = t.fees if t.fees is not none and t.fees != '' else None %}
 {% set net = t.net_cash_flow if t.net_cash_flow is not none else 0 %}
 {% set pnl = t.pl_dollar or 0 %}
 {% set pnl_pct = t.pl_percent or 0 %}
@@ -848,7 +900,11 @@ Portfolio Growth: ${{ analytics.total_pnl }}
 <!-- ✅ FEES -->
 <td>
 {% if action in ["BUY", "SELL"] %}
-    ${{ "%.2f"|format(fees) }}
+    {% if fees is not none %}
+        ${{ "%.2f"|format(fees) }}
+    {% else %}
+        -
+    {% endif %}
 {% else %}
     -
 {% endif %}
@@ -1137,32 +1193,44 @@ let lastSortCol = null;
 
 
 function toggleFields(){
-    let type = document.getElementById("actionSelect").value;
-    let tradeFields = document.getElementById("tradeFields");
-    let lotSelect = document.getElementById("lotSelect");
+    const entryType = document.getElementById("transactionType")?.value || "stock";
+    const stockFields = document.getElementById("stockEntryFields");
+    const cashFields = document.getElementById("cashEntryFields");
+    const lotSelect = document.getElementById("lotSelect");
+    const lotSelectWrap = document.getElementById("lotSelectWrap");
 
-    
-    if(type === "SELL"){
-        lotSelect.style.display = "block";
-        loadLots(); // ✅ fetch lots
+    const showStock = entryType === "stock";
+    stockFields.style.display = showStock ? "block" : "none";
+    cashFields.style.display = showStock ? "none" : "block";
+
+    if (showStock) {
+        const action = document.getElementById("actionSelect").value;
+        if (action === "SELL") {
+            lotSelectWrap.style.display = "block";
+            lotSelect.style.display = "block";
+            loadLots();
+        } else {
+            lotSelectWrap.style.display = "none";
+            lotSelect.style.display = "none";
+        }
     } else {
+        lotSelectWrap.style.display = "none";
         lotSelect.style.display = "none";
     }
-
 }
 
 
 <!-- ✅ ADD Sell Validation -->
 function validateSell() {
-    const action = document.getElementById("actionSelect").value;
+    const transactionType = document.getElementById("transactionType")?.value || "stock";
+    if (transactionType !== "stock") return true;
 
-    // ✅ only run for SELL
+    const action = document.getElementById("actionSelect").value;
     if (action !== "SELL") return true;
 
     const sharesInput = parseFloat(document.querySelector('[name="shares"]').value || 0);
     const lotDropdown = document.getElementById("lotSelect");
 
-    // ✅ require lot selection
     if (!lotDropdown.value) {
         alert("Please select a lot");
         return false;
@@ -1171,7 +1239,6 @@ function validateSell() {
     const selected = lotDropdown.selectedOptions[0];
     const available = parseFloat(selected.dataset.shares);
 
-    // ✅ prevent overselling
     if (sharesInput > available) {
         alert(`Cannot sell more than ${available} shares in this lot`);
         return false;

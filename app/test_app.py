@@ -146,6 +146,56 @@ def test_dataset_download_rejects_unknown_format(client):
     assert response.status_code == 400
 
 
+def test_add_activity_form_has_stock_and_cash_modes(client):
+    resp = client.get("/")
+    html = resp.get_data(as_text=True)
+
+    assert resp.status_code == 200
+    assert "Stock Transaction" in html
+    assert "Cash Transaction" in html
+    assert "transactionType" in html
+
+
+def test_blank_fees_are_displayed_as_dash_in_activity_table(client):
+    add_account(client, "Brokerage")
+    conn = main.get_db_connection()
+    conn.execute(
+        "INSERT INTO transactions(account,date,symbol,type,shares,price,fees,lot_id) VALUES(?,?,?,?,?,?,?,?)",
+        ("Brokerage", "2026-03-01", "AAPL", "BUY", 5.0, 100.0, None, 0),
+    )
+    conn.commit()
+    conn.close()
+
+    resp = client.get("/")
+    html = resp.get_data(as_text=True)
+    assert resp.status_code == 200
+    assert "AAPL" in html
+    assert re.search(r"AAPL.*?<td>\s*-\s*</td>", html, flags=re.S)
+
+
+def test_add_trade_accepts_cash_transaction_mode(client):
+    add_account(client, "Brokerage")
+
+    response = client.post(
+        "/add_trade",
+        data={
+            "entry_type": "cash",
+            "account": "Brokerage",
+            "date": "2026-02-01",
+            "cash_type": "STARTINGCASH",
+            "amount": "2500",
+            "symbol": "FDRXX",
+        },
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    conn = main.get_db_connection()
+    rows = conn.execute("SELECT account, description, amount FROM cash_flows").fetchall()
+    conn.close()
+    assert [(row[0], row[1], row[2]) for row in rows] == [("Brokerage", "STARTINGCASH", 2500.0)]
+
+
 def test_fidelity_401k_upload_imports_activity(client):
     fidelity_csv = """Run Date,Account,Account Number,Action,Symbol,Description,Type,Price ($),Quantity,Commission,Fees ($),Accrued Interest,Amount ($),Settlement Date
 8/17/2026,BrokerageLink,123,YOU BOUGHT TEST CORP,TEST,Test Corp,Stocks,10.00,5,,,,-50.00,8/19/2026

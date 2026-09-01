@@ -582,7 +582,8 @@ def enrich_trades(trades):
                 if lot["shares"] == 0:
                     inventory[inventory_key].pop(0)
 
-            pnl = pnl - row["fees"]
+            fees = row["fees"] if row["fees"] is not None and row["fees"] != "" else 0
+            pnl = pnl - fees
 
             trades.at[i, "realized_pnl"] = pnl 
         
@@ -662,26 +663,33 @@ def compute_positions(trades, cash):
             positions.setdefault(sym, 0)
 
             if row["type"] == "BUY":
+                shares = row["shares"] if row["shares"] is not None and row["shares"] != "" else 0
+                price = row["price"] if row["price"] is not None and row["price"] != "" else 0
+                fees = row["fees"] if row["fees"] is not None and row["fees"] != "" else 0
+
                 inventory[sym].append({
-                    "shares": row["shares"],
-                    "price": row["price"]
+                    "shares": shares,
+                    "price": price
                 })
-                positions[sym] += row["shares"]
+                positions[sym] += shares
 
                 # ✅ include fees
-                cash_val -= (row["shares"] * row["price"] + row["fees"])
+                cash_val -= (shares * price + fees)
                 if is_fdrxx_cash(sym):
                     cash_equivalent_lots.append({
-                        "shares": row["shares"],
-                        "price": row["price"],
+                        "shares": shares,
+                        "price": price,
                     })
 
             elif row["type"] == "SELL":
-                remaining = row["shares"]
-                positions[sym] -= row["shares"]
+                shares = row["shares"] if row["shares"] is not None and row["shares"] != "" else 0
+                price = row["price"] if row["price"] is not None and row["price"] != "" else 0
+                fees = row["fees"] if row["fees"] is not None and row["fees"] != "" else 0
+                remaining = shares
+                positions[sym] -= shares
 
                 # ✅ include fees
-                cash_val += (row["shares"] * row["price"] - row["fees"])
+                cash_val += (shares * price - fees)
 
                 while remaining > 0 and inventory[sym]:
                     lot = inventory[sym][0]
@@ -798,12 +806,16 @@ def allocation_chart(positions, total_cash):
     return fig.to_html(full_html=False)
 
 def calculate_cash_flow(row):
+    shares = row["shares"] if row["shares"] is not None and row["shares"] != "" else 0
+    price = row["price"] if row["price"] is not None and row["price"] != "" else 0
+    fees = row["fees"] if row["fees"] is not None and row["fees"] != "" else 0
+
     if row["type"] == "BUY":
-        return -row["shares"] * row["price"] - row["fees"]
+        return -shares * price - fees
     elif row["type"] == "SELL":
-        return row["shares"] * row["price"] - row["fees"]
+        return shares * price - fees
     elif row["type"] == "DIVIDEND":
-        return row["price"]
+        return price
 
     return 0
 
@@ -924,9 +936,9 @@ def build_activity(trades, cash, dividends=None):
         if is_legacy_core_cash_transaction(t):
             continue
 
-        shares = t.get("shares", 0)
-        price = t.get("price", 0)
-        fees = t.get("fees", 0)
+        shares = t.get("shares", 0) or 0
+        price = t.get("price", 0) or 0
+        fees = t.get("fees", 0) or 0
         trade_amount = shares * price
         lot_id = t.get("lot_id", "")
 
@@ -1566,18 +1578,53 @@ def rename_account():
 @app.route("/add_trade", methods=["POST"])
 def add_trade():
     conn = get_db_connection()
+    entry_type = request.form.get("entry_type", "stock")
+
+    if entry_type == "cash":
+        account = request.form.get("cash_account") or request.form.get("account")
+        date = request.form.get("cash_date") or request.form.get("date")
+        txn_type = request.form.get("cash_type", "CONTRIBUTION")
+        amount = safe_float(request.form.get("amount"))
+        symbol = (request.form.get("cash_symbol") or "").strip()
+
+        if txn_type == "WITHDRAWAL":
+            signed_amount = -amount
+        else:
+            signed_amount = amount
+
+        conn.execute("""
+        INSERT INTO cash_flows(account,date,amount,description)
+        VALUES(?,?,?,?)
+        """, (
+            account,
+            date,
+            signed_amount,
+            txn_type
+        ))
+
+        conn.commit()
+        conn.close()
+        return redirect("/")
+
+    account = request.form["account"]
+    date = request.form["date"]
+    symbol = request.form.get("stock") or ""
+    action = request.form.get("action", "BUY")
+    shares = safe_float(request.form.get("shares"))
+    price = safe_float(request.form.get("price"))
+    fees = safe_float(request.form.get("fees")) or 0
 
     conn.execute("""
     INSERT INTO transactions(account,date,symbol,type,shares,price,fees,lot_id)
     VALUES(?,?,?,?,?,?,?,?)
     """, (
-        request.form["account"],
-        request.form["date"],
-        request.form["stock"],
-        request.form["action"],
-        safe_float(request.form["shares"]),
-        safe_float(request.form["price"]),
-        safe_float(request.form["fees"]),
+        account,
+        date,
+        symbol,
+        action,
+        shares,
+        price,
+        fees,
         0
     ))
 
