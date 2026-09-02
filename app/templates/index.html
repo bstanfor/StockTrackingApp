@@ -597,6 +597,40 @@ Portfolio Growth: ${{ analytics.total_pnl }}
 <h2>Allocation</h2>
 {{ allocation_chart|safe }}
 
+<hr>
+
+<h2>Closed Positions</h2>
+<div class="table-container">
+<table>
+<thead>
+<tr>
+    <th>Account</th>
+    <th>Symbol</th>
+    <th>Shares Sold</th>
+    <th>Realized P&L</th>
+    <th>Proceeds</th>
+</tr>
+</thead>
+<tbody>
+{% if closed_positions %}
+    {% for row in closed_positions %}
+    <tr>
+        <td>{{ account_label(row.account, account_details) }}</td>
+        <td>{{ row.symbol }}</td>
+        <td>{{ "%.2f"|format(row.shares_sold) }}</td>
+        <td class="{% if row.realized_pnl >= 0 %}positive{% else %}negative{% endif %}">${{ "%.2f"|format(row.realized_pnl) }}</td>
+        <td>${{ "%.2f"|format(row.proceeds) }}</td>
+    </tr>
+    {% endfor %}
+{% else %}
+    <tr>
+        <td colspan="5">No closed positions.</td>
+    </tr>
+{% endif %}
+</tbody>
+</table>
+</div>
+
 </div>
 
 <!-- ✅ ACTIVITY -->					 

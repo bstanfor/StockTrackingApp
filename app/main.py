@@ -921,6 +921,35 @@ def compute_metrics(trades, cash):
         "total_pnl": round(total_pnl, 2)
     }
 
+def build_closed_positions(trades):
+    if trades is None or trades.empty:
+        return []
+
+    closed = []
+    for (account, symbol), group in trades.groupby(["account", "symbol"], dropna=False):
+        if str(symbol).upper() == "FDRXX":
+            continue
+
+        total_bought = float(group[group["type"] == "BUY"]["shares"].sum()) if not group[group["type"] == "BUY"].empty else 0.0
+        total_sold = float(group[group["type"] == "SELL"]["shares"].sum()) if not group[group["type"] == "SELL"].empty else 0.0
+        if total_sold <= 0:
+            continue
+
+        realized_pnl = float(group[group["type"] == "SELL"]["realized_pnl"].sum()) if not group[group["type"] == "SELL"].empty else 0.0
+        proceeds = float(group[group["type"] == "SELL"]["trade_amount"].sum()) if not group[group["type"] == "SELL"].empty else 0.0
+
+        closed.append({
+            "account": account,
+            "symbol": symbol,
+            "shares_sold": round(total_sold, 2),
+            "realized_pnl": round(realized_pnl, 2),
+            "proceeds": round(proceeds, 2),
+            "bought_shares": round(total_bought, 2),
+        })
+
+    return sorted(closed, key=lambda row: (row["account"], row["symbol"]))
+
+
 def build_activity(trades, cash, dividends=None):
     
     # ✅ SAFETY FILTER
@@ -1385,6 +1414,7 @@ def index():
     end_date = request.args.get("end_date", "")
     chart = equity_chart(trades, cash, period=period, start_date=start_date, end_date=end_date)
     account_positions = compute_positions(trades, cash)
+    closed_positions = build_closed_positions(trades)
     account_perf = account_performance(trades, cash) # ✅ Account Performance update
     for performance in account_perf:
         performance["account_label"] = account_label(performance["account"], account_details)
@@ -1410,6 +1440,7 @@ def index():
         cash_flows=cash.to_dict("records"),
         dividends=dividends.to_dict("records"),
         account_positions=account_positions,
+        closed_positions=closed_positions,
         activity=activity,
         account_bal = account_balances(activity),
         allocation_chart=alloc_chart,
