@@ -159,6 +159,14 @@ def safe_float(v):
         return 0.0
 
 
+def transaction_principal(row):
+    source_amount = row.get("source_amount", "")
+    if str(row.get("fidelity_type", "")) == "Vanguard IRA" and not pd.isna(source_amount):
+        if str(source_amount).strip() not in {"", "nan", "None"}:
+            return abs(safe_float(source_amount))
+    return abs(safe_float(row.get("shares"))) * abs(safe_float(row.get("price")))
+
+
 def fidelity_action(action):
     action = str(action or "").upper()
     if "DIVIDEND RECEIVED" in action:
@@ -189,7 +197,96 @@ def fidelity_account_number(value):
 
 
 def is_fdrxx_cash(symbol):
-    return str(symbol or "").strip().upper() == "FDRXX"
+    return str(symbol or "").strip().upper() in {"FDRXX", "VMFXX"}
+
+
+def is_ignored_vanguard_transaction(transaction_type):
+    normalized = re.sub(r"[^A-Z]", "", str(transaction_type or "").upper())
+    return normalized in {"DIVIDENDREINVESTMENT", "SWEEPOUT", "SWEEPIN"}
+
+
+def vanguard_column(row, *names):
+    for name in names:
+        if name in row:
+            return row.get(name, "")
+    return ""
+
+
+def import_vanguard_ira_activity(file):
+    df = pd.read_csv(BytesIO(file.read()), dtype=str)
+    df.columns = [re.sub(r"\s+", " ", str(column).strip().lower()) for column in df.columns]
+
+    required = {"transaction type", "symbol", "principal amount", "commissions and fees"}
+    missing = required.difference(df.columns)
+    if missing:
+        raise ValueError("Missing Vanguard columns: " + ", ".join(sorted(missing)))
+
+    imported = 0
+    conn = get_db_connection()
+    try:
+        for _, row in df.iterrows():
+            transaction_type = str(row.get("transaction type", "") or "").strip()
+            if is_ignored_vanguard_transaction(transaction_type):
+                continue
+
+            date_value = vanguard_column(row, "transaction date", "trade date", "date")
+            date = pd.to_datetime(date_value, errors="coerce")
+            if pd.isna(date):
+                continue
+
+            symbol = str(row.get("symbol", "") or "").strip().upper()
+            principal = safe_float(row.get("principal amount"))
+            fees = abs(safe_float(row.get("commissions and fees")))
+            shares = abs(safe_float(row.get("shares")))
+            price = abs(safe_float(vanguard_column(row, "share price", "price")))
+            account_number = fidelity_account_number(
+                vanguard_column(row, "account number", "account #")
+            )
+            account = str(vanguard_column(row, "account", "account name") or "").strip()
+            account = account or "Vanguard IRA"
+            conn.execute(
+                "INSERT OR IGNORE INTO accounts(name, account_number) VALUES (?, ?)",
+                (account, account_number or None),
+            )
+
+            normalized_type = re.sub(r"[^A-Z]", "", transaction_type.upper())
+            if normalized_type == "ROLLOVERCONVERSION":
+                conn.execute(
+                    "INSERT INTO cash_flows(account,date,amount,description) VALUES(?,?,?,?)",
+                    (account, date.strftime("%Y-%m-%d"), abs(principal), "CONTRIBUTION"),
+                )
+                imported += 1
+                continue
+
+            action = None
+            if "BUY" in normalized_type or "PURCHASE" in normalized_type:
+                action = "BUY"
+            elif "SELL" in normalized_type or "REDEMPTION" in normalized_type:
+                action = "SELL"
+            if not action or not symbol or shares == 0:
+                continue
+
+            conn.execute(
+                """
+                INSERT INTO transactions(
+                    account,date,symbol,type,shares,price,fees,lot_id,account_number,
+                    fidelity_action,description,fidelity_type,source_amount
+                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
+                """,
+                (
+                    account, date.strftime("%Y-%m-%d"), symbol, action, shares, price,
+                    fees, 0, account_number or None, transaction_type,
+                    str(row.get("transaction description", "") or "").strip(),
+                    "Vanguard IRA", principal,
+                ),
+            )
+            imported += 1
+
+        conn.commit()
+    finally:
+        conn.close()
+
+    return imported
 
 
 def is_contribution_description(description):
@@ -545,7 +642,7 @@ def enrich_trades(trades):
         return trades
 
     trades = trades.sort_values(["date", "id"]).copy()
-    trades["trade_amount"] = trades["shares"] * trades["price"]
+    trades["trade_amount"] = trades.apply(transaction_principal, axis=1)
     trades["realized_pnl"] = 0.0
     trades["realized_pct"] = 0.0
 
@@ -674,7 +771,11 @@ def compute_positions(trades, cash):
                 positions[sym] += shares
 
                 # ✅ include fees
-                cash_val -= (shares * price + fees)
+                cash_val -= (
+                    transaction_principal(row)
+                    if row.get("fidelity_type") == "Vanguard IRA"
+                    else shares * price + fees
+                )
                 if is_fdrxx_cash(sym):
                     cash_equivalent_lots.append({
                         "shares": shares,
@@ -689,7 +790,11 @@ def compute_positions(trades, cash):
                 positions[sym] -= shares
 
                 # ✅ include fees
-                cash_val += (shares * price - fees)
+                cash_val += (
+                    transaction_principal(row)
+                    if row.get("fidelity_type") == "Vanguard IRA"
+                    else shares * price - fees
+                )
 
                 while remaining > 0 and inventory[sym]:
                     lot = inventory[sym][0]
@@ -715,6 +820,9 @@ def compute_positions(trades, cash):
         account_positions = []
         total_value = cash_val
         has_fdrxx_cash = any(is_fdrxx_cash(symbol) for symbol in positions)
+        cash_symbol = next(
+            (symbol for symbol in positions if is_fdrxx_cash(symbol)), ""
+        )
 
         for sym, shares in positions.items():
             if shares <= 0:
@@ -759,7 +867,7 @@ def compute_positions(trades, cash):
             "positions": account_positions,
             "cash": round(cash_val, 2),  # ✅ FIXED CASH
             "total_value": round(total_value, 2),
-            "cash_symbol": "FDRXX (Cash)" if has_fdrxx_cash else "CASH",
+            "cash_symbol": f"{cash_symbol} (Cash)" if has_fdrxx_cash else "CASH",
         }
 
     # -------------------------
@@ -810,9 +918,14 @@ def calculate_cash_flow(row):
     price = row["price"] if row["price"] is not None and row["price"] != "" else 0
     fees = row["fees"] if row["fees"] is not None and row["fees"] != "" else 0
 
+    principal = transaction_principal(row)
     if row["type"] == "BUY":
+        if row.get("fidelity_type") == "Vanguard IRA":
+            return -principal
         return -shares * price - fees
     elif row["type"] == "SELL":
+        if row.get("fidelity_type") == "Vanguard IRA":
+            return principal
         return shares * price - fees
     elif row["type"] == "DIVIDEND":
         return price
@@ -884,7 +997,7 @@ def compute_metrics(trades, cash):
                     inventory[position_key].pop(0)
 
     cash_balance += sum(
-        shares * get_price_cached("FDRXX")[0]
+        shares * get_price_cached(symbol)[0]
         for (account, symbol), shares in cash_equivalent_positions.items()
         if shares > 0 and is_fdrxx_cash(symbol)
     )
@@ -927,7 +1040,7 @@ def build_closed_positions(trades):
 
     closed = []
     for (account, symbol), group in trades.groupby(["account", "symbol"], dropna=False):
-        if str(symbol).upper() == "FDRXX":
+        if is_fdrxx_cash(symbol):
             continue
 
         total_bought = float(group[group["type"] == "BUY"]["shares"].sum()) if not group[group["type"] == "BUY"].empty else 0.0
@@ -1776,7 +1889,15 @@ def upload():
     if not file:
         return redirect("/")
 
+    upload_type = request.form.get("upload_type", "general")
     try:
+        if upload_type == "fidelity":
+            import_fidelity_activity(file)
+            return redirect("/")
+        if upload_type == "vanguard":
+            import_vanguard_ira_activity(file)
+            return redirect("/")
+
         # ✅ load file
         if file.filename.endswith(".csv"):
             df = pd.read_csv(file)

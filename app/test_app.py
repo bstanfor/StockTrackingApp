@@ -154,6 +154,11 @@ def test_add_activity_form_has_stock_and_cash_modes(client):
     assert "Stock Transaction" in html
     assert "Cash Transaction" in html
     assert "transactionType" in html
+    assert html.count('name="file"') == 1
+    assert 'action="/upload"' in html
+    assert "Upload Fidelity 401K Activity" in html
+    assert "Upload Vanguard IRA Activity" in html
+    assert "Upload General Data" in html
 
 
 def test_blank_fees_are_displayed_as_dash_in_activity_table(client):
@@ -254,6 +259,60 @@ def test_fidelity_401k_upload_imports_activity(client):
         "Commission", "Accrued Interest", "Source Amount", "Settlement Date",
     ]:
         assert column_label in html
+
+
+def test_unified_upload_form_dispatches_fidelity_file(client):
+    fidelity_csv = """Run Date,Account,Account Number,Action,Symbol,Description,Type,Price ($),Quantity,Commission,Fees ($),Accrued Interest,Amount ($),Settlement Date
+8/17/2026,BrokerageLink,123,YOU BOUGHT TEST,TEST,Test,Stocks,10,2,,,,-20,
+"""
+
+    response = client.post(
+        "/upload",
+        data={
+            "upload_type": "fidelity",
+            "file": (BytesIO(fidelity_csv.encode()), "activity.csv"),
+        },
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 302
+    trades, _ = main.load_data()
+    assert [(row["symbol"], row["type"], row["shares"]) for _, row in trades.iterrows()] == [
+        ("TEST", "BUY", 2.0)
+    ]
+
+
+def test_vanguard_upload_imports_rollover_and_vmfx_cash_rules(client):
+    vanguard_csv = """Transaction Date,Transaction Type,Transaction Description,Symbol,Shares,Share Price,Principal Amount,Commissions and Fees,Account Number
+8/17/2026,Rollover Conversion,Rollover from old plan,,,-,5000.00,0,IRA-1
+8/18/2026,Buy,Money market purchase,VMFXX,1000,1.00,1000.00,2.50,IRA-1
+8/19/2026,Dividend Reinvestment,Ignored dividend,VMFXX,5,1.00,5.00,0,IRA-1
+8/20/2026,Sweep Out,Ignored sweep,VMFXX,10,1.00,10.00,0,IRA-1
+8/21/2026,Sweep In,Ignored sweep,VMFXX,10,1.00,10.00,0,IRA-1
+"""
+
+    response = client.post(
+        "/upload",
+        data={
+            "upload_type": "vanguard",
+            "file": (BytesIO(vanguard_csv.encode()), "vanguard.csv"),
+        },
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 302
+    trades, cash = main.load_data()
+    assert [(row["symbol"], row["type"], row["shares"], row["fees"])
+            for _, row in trades.iterrows()] == [("VMFXX", "BUY", 1000.0, 2.5)]
+    assert [(row["description"], row["amount"]) for _, row in cash.iterrows()] == [
+        ("CONTRIBUTION", 5000.0)
+    ]
+
+    enriched = main.enrich_trades(trades)
+    positions = main.compute_positions(enriched, cash)["Vanguard IRA"]
+    assert positions["cash"] == 5000.0
+    assert positions["cash_symbol"] == "VMFXX (Cash)"
+    assert positions["positions"] == []
 
 
 def test_fidelity_import_requires_dividend_zero_quantity_and_purchase_negative_amount(client):

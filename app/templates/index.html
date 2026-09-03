@@ -785,14 +785,13 @@ Portfolio Growth: ${{ analytics.total_pnl }}
 <button type="submit">Add</button>
 <h3>Upload Transactions</h3>
 <form method="POST" action="/upload" enctype="multipart/form-data">
-   <input type="file" name="file" accept=".csv,.xlsx" required>
+    <input type="file" name="file" accept=".csv,.xlsx,.xls" required>
+    <select name="upload_type" aria-label="Upload format">
+        <option value="fidelity">Upload Fidelity 401K Activity</option>
+        <option value="vanguard">Upload Vanguard IRA Activity</option>
+        <option value="general">Upload General Data</option>
+    </select>
     <button type="submit">Upload</button>
-</form>
-
-<h3>Upload Fidelity 401K Activity</h3>
-<form method="POST" action="/upload_fidelity" enctype="multipart/form-data">
-    <input type="file" name="fidelity_file" accept=".csv" required>
-    <button type="submit">Upload Fidelity CSV</button>
 </form>
 
 
