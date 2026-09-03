@@ -935,8 +935,12 @@ def build_closed_positions(trades):
         if total_sold <= 0:
             continue
 
-        realized_pnl = float(group[group["type"] == "SELL"]["realized_pnl"].sum()) if not group[group["type"] == "SELL"].empty else 0.0
-        proceeds = float(group[group["type"] == "SELL"]["trade_amount"].sum()) if not group[group["type"] == "SELL"].empty else 0.0
+        sell_rows = group[group["type"] == "SELL"]
+        realized_pnl = float(sell_rows["realized_pnl"].sum()) if not sell_rows.empty else 0.0
+        proceeds = (
+            float((sell_rows["trade_amount"] - sell_rows["fees"].fillna(0)).sum())
+            if not sell_rows.empty else 0.0
+        )
 
         closed.append({
             "account": account,

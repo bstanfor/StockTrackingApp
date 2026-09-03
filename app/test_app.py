@@ -545,6 +545,41 @@ def test_dashboard_excludes_legacy_fidelity_core_cash_buys_from_contributions(cl
     assert not any(row["action"] == "CONTRIBUTION" and row["symbol"] == "FDRXX" for row in activity)
 
 
+def test_closed_position_proceeds_subtract_sale_fees(client):
+    add_account(client, "BrokerageLink Roth")
+    add_account(client, "BrokerageLink")
+    add_trade(
+        client, account="BrokerageLink Roth", date="2026-07-01", symbol="QBTS",
+        action="BUY", shares="4000", price="10", fees="0"
+    )
+    add_trade(
+        client, account="BrokerageLink Roth", date="2026-07-02", symbol="QBTS",
+        action="SELL", shares="1000", price="100", fees="0.98"
+    )
+    add_trade(
+        client, account="BrokerageLink Roth", date="2026-07-03", symbol="QBTS",
+        action="SELL", shares="1000", price="107.3968", fees="0.59"
+    )
+    add_trade(
+        client, account="BrokerageLink", date="2026-07-01", symbol="AAPL",
+        action="BUY", shares="10", price="100", fees="0"
+    )
+    add_trade(
+        client, account="BrokerageLink", date="2026-07-02", symbol="AAPL",
+        action="SELL", shares="10", price="150", fees="1.25"
+    )
+
+    trades, _ = main.load_data()
+    closed_positions = main.build_closed_positions(main.enrich_trades(trades))
+    proceeds = {
+        (row["account"], row["symbol"]): row["proceeds"]
+        for row in closed_positions
+    }
+
+    assert proceeds[("BrokerageLink Roth", "QBTS")] == 207395.23
+    assert proceeds[("BrokerageLink", "AAPL")] == 1498.75
+
+
 def test_realized_pnl_uses_same_day_trade_order_and_account_scope(client):
     add_account(client, "BrokerageLink")
     add_account(client, "BrokerageLink Roth")
