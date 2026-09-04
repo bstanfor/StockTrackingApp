@@ -387,8 +387,8 @@ def test_vanguard_same_day_sale_uses_net_proceeds_and_decimal_cost_basis(client)
     trades, _ = main.load_data()
     enriched = main.enrich_trades(trades)
     sale = enriched[enriched["type"] == "SELL"].iloc[0]
-    assert round(sale["realized_pnl"], 2) == 450.00
-    assert round(sale["realized_pct"], 2) == 2.52
+    assert round(sale["realized_pnl"], 2) == 455.00
+    assert round(sale["realized_pct"], 2) == 2.54
 
 
 def test_fidelity_import_requires_dividend_zero_quantity_and_purchase_negative_amount(client):

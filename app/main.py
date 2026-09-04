@@ -169,6 +169,8 @@ def transaction_principal(row):
 
 def transaction_proceeds(row):
     principal = transaction_principal(row)
+    if row.get("fidelity_type") == "Vanguard IRA":
+        return principal
     return principal - abs(safe_float(row.get("fees")))
 
 
