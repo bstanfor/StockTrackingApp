@@ -623,6 +623,36 @@ def test_dashboard_preserves_period_when_account_filter_changes(client):
     assert 'name="account" value="401K"' in html
 
 
+def test_account_performance_selector_defaults_to_ytd_and_includes_dividends(client):
+    add_account(client, "401K")
+    add_trade(client, account="401K", date="2026-01-02", symbol="AAPL",
+              action="BUY", shares="10", price="100", fees="0")
+    conn = main.get_db_connection()
+    conn.execute(
+        "INSERT INTO dividends(account,date,symbol,quantity,amount) VALUES(?,?,?,?,?)",
+        ("401K", "2026-01-03", "AAPL", 0, 25.0),
+    )
+    conn.commit()
+    conn.close()
+
+    html = client.get("/").get_data(as_text=True)
+    assert 'id="performanceView"' in html
+    assert "Total Account Performance" in html
+    assert "Trade Account Performance" in html
+    assert 'name="period" value="YTD"' in html
+
+    trades, cash = main.load_data()
+    trades = main.enrich_trades(trades)
+    dividends = main.load_dividends()
+    total = main.account_performance(
+        trades, cash, dividends, "YTD", include_dividends=True
+    )
+    trade_only = main.account_performance(
+        trades, cash, dividends, "YTD", include_dividends=False
+    )
+    assert total[0]["pnl"] == trade_only[0]["pnl"] + 25.0
+
+
 def test_dashboard_custom_date_range_limits_contributions_and_dividends(client):
     add_account(client, "401K")
     add_cash(client, account="401K", date="2026-01-15", amount="1000")

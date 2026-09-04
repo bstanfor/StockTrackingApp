@@ -1317,23 +1317,55 @@ def account_balances(activity):
 
     return {k: round(v, 2) for k, v in balances.items()}
 
-def account_performance(trades, cash): # ✅ Account Performance Dashboard
-    if trades.empty:
+def account_performance(trades, cash, dividends=None, period="YTD",
+                        start_date=None, end_date=None, include_dividends=True):
+    dividends = dividends if dividends is not None else pd.DataFrame()
+    if trades.empty and cash.empty and dividends.empty:
         return []
 
     trades = trades.copy()
     cash = cash.copy()
+    today = pd.Timestamp.today().normalize()
+    if period == "CUSTOM" and start_date:
+        start = pd.to_datetime(start_date, errors="coerce")
+        if pd.isna(start):
+            start = today - pd.DateOffset(years=1)
+    elif period == "30D":
+        start = today - pd.Timedelta(days=30)
+    elif period == "60D":
+        start = today - pd.Timedelta(days=60)
+    elif period == "90D":
+        start = today - pd.Timedelta(days=90)
+    elif period == "Q":
+        start = today - pd.DateOffset(months=3)
+    elif period == "Y":
+        start = today - pd.DateOffset(years=1)
+    else:
+        start = pd.Timestamp(year=today.year, month=1, day=1)
+    end = pd.to_datetime(end_date, errors="coerce") if end_date else today
+    if pd.isna(end):
+        end = today
+    end = end.normalize() + pd.Timedelta(days=1)
+    period_trades = trades[(trades["date"] >= start) & (trades["date"] < end)]
+    period_dividends = dividends[
+        (dividends["date"] >= start) & (dividends["date"] < end)
+    ] if not dividends.empty else dividends
 
     results = []
 
-    accounts = trades["account"].unique()
+    accounts = set(trades["account"].unique()) if not trades.empty else set()
+    accounts |= set(cash["account"].unique()) if not cash.empty else set()
 
     for acc in accounts:
         acc_trades = trades[trades["account"] == acc]
-        acc_cash = cash[cash["account"] == acc]
+        period_acc_trades = period_trades[period_trades["account"] == acc]
 
         # ✅ realized P&L
-        realized = acc_trades["realized_pnl"].sum()
+        realized = period_acc_trades["realized_pnl"].sum()
+        dividend_total = (
+            period_dividends[period_dividends["account"] == acc]["amount"].sum()
+            if include_dividends and not period_dividends.empty else 0
+        )
 
         # ✅ invested capital (BUY trades)
         invested = acc_trades[acc_trades["type"] == "BUY"]["trade_amount"].sum()
@@ -1369,7 +1401,7 @@ def account_performance(trades, cash): # ✅ Account Performance Dashboard
                 unrealized += shares * (price - cost)
                 value += shares * price
 
-        total_pnl = realized + unrealized
+        total_pnl = realized + unrealized + dividend_total
 
         # ✅ return %
         total_cost = invested if invested != 0 else 1
@@ -1609,7 +1641,7 @@ def index():
     metrics = compute_metrics(trades, cash)
     activity = build_activity(trades, cash, dividends)
     account_bal = account_balances(activity)
-    period = request.args.get("period", "1Y").upper()
+    period = request.args.get("period", "YTD").upper()
     if period not in {"30D", "60D", "90D", "Q", "Y", "YTD", "CUSTOM"}:
         period = "1Y"
     start_date = request.args.get("start_date", "")
@@ -1617,7 +1649,13 @@ def index():
     chart = equity_chart(trades, cash, period=period, start_date=start_date, end_date=end_date)
     account_positions = compute_positions(trades, cash)
     closed_positions = build_closed_positions(trades)
-    account_perf = account_performance(trades, cash) # ✅ Account Performance update
+    performance_view = request.args.get("performance_view", "total").lower()
+    if performance_view not in {"total", "trade"}:
+        performance_view = "total"
+    account_perf = account_performance(
+        trades, cash, dividends, period, start_date, end_date,
+        include_dividends=performance_view == "total",
+    )
     for performance in account_perf:
         performance["account_label"] = account_label(performance["account"], account_details)
     
@@ -1656,6 +1694,7 @@ def index():
         equity_chart=chart,
         analytics=analytics,
         selected_period=period,
+        performance_view=performance_view,
         account_details=account_details,
         account_label=account_label,
         **metrics

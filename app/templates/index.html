@@ -360,7 +360,17 @@ Return: ${{ "%.2f"|format(total_pnl) }}
 </div>
 
 
-<h2>Account Performance</h2>
+<form method="get" id="accountPerformanceForm">
+{% for acc in selected_account %}<input type="hidden" name="account" value="{{ acc }}">{% endfor %}
+<input type="hidden" name="period" value="{{ selected_period }}">
+<input type="hidden" name="start_date" value="{{ start_date }}">
+<input type="hidden" name="end_date" value="{{ end_date }}">
+<label for="performanceView">Account Performance</label>
+<select id="performanceView" name="performance_view" onchange="this.form.submit()">
+    <option value="total" {% if performance_view == 'total' %}selected{% endif %}>Total Account Performance</option>
+    <option value="trade" {% if performance_view == 'trade' %}selected{% endif %}>Trade Account Performance</option>
+</select>
+</form>
 
 {% if account_performance %}
 
@@ -435,6 +445,7 @@ Return: ${{ "%.2f"|format(total_pnl) }}
 
 <form method="get" id="periodForm">
 {% for acc in selected_account %}<input type="hidden" name="account" value="{{ acc }}">{% endfor %}
+<input type="hidden" name="performance_view" value="{{ performance_view }}">
 <select name="period" onchange="this.form.submit()">
 <option value="30D" {% if selected_period=='30D' %}selected{% endif %}>30 Days</option>
 <option value="60D" {% if selected_period=='60D' %}selected{% endif %}>60 Days</option>
