@@ -318,7 +318,7 @@ def test_vanguard_upload_imports_rollover_and_vmfx_cash_rules(client):
 def test_vanguard_dashboard_counts_dividends_and_qbts_sale_profit(client):
     vanguard_csv = """Transaction Date,Transaction Type,Transaction Description,Symbol,Shares,Share Price,Principal Amount,Commissions and Fees,Account Number
 1/1/2026,Rollover Conversion,Rollover,,,-,10000,0,IRA-1
-1/2/2026,Sell,Sell QBTS,QBTS,100,41.82,4182,10,IRA-1
+1/2/2026,Sell,Sell QBTS,QBTS,100,41.82,4182,0,IRA-1
 1/2/2026,Buy,Buy QBTS,QBTS,100,10,1000,0,IRA-1
 1/4/2026,Dividend,Dividend payment,VTI,,1,1171.19,0,IRA-1
 """
@@ -366,6 +366,29 @@ def test_vanguard_conversion_incoming_is_counted_as_contribution(client):
         ("CONTRIBUTION", 8800.89)
     ]
     assert main.compute_metrics(trades, cash)["total_cash"] == 8800.89
+
+
+def test_vanguard_same_day_sale_uses_net_proceeds_and_decimal_cost_basis(client):
+    vanguard_csv = """Transaction Date,Transaction Type,Transaction Description,Symbol,Shares,Share Price,Principal Amount,Commissions and Fees,Account Number
+2/27/2026,Sell,Sell QBTS,QBTS,1000,18.34,18340,5,IRA-1
+2/27/2026,Buy,Buy QBTS,QBTS,1000,17.885,17885,0,IRA-1
+"""
+
+    response = client.post(
+        "/upload",
+        data={
+            "upload_type": "vanguard",
+            "file": (BytesIO(vanguard_csv.encode()), "vanguard.csv"),
+        },
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 302
+    trades, _ = main.load_data()
+    enriched = main.enrich_trades(trades)
+    sale = enriched[enriched["type"] == "SELL"].iloc[0]
+    assert round(sale["realized_pnl"], 2) == 450.00
+    assert round(sale["realized_pct"], 2) == 2.52
 
 
 def test_fidelity_import_requires_dividend_zero_quantity_and_purchase_negative_amount(client):

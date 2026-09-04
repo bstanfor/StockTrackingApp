@@ -169,8 +169,6 @@ def transaction_principal(row):
 
 def transaction_proceeds(row):
     principal = transaction_principal(row)
-    if row.get("fidelity_type") == "Vanguard IRA":
-        return principal
     return principal - abs(safe_float(row.get("fees")))
 
 
@@ -876,7 +874,7 @@ def compute_positions(trades, cash):
 
                 # ✅ include fees
                 cash_val += (
-                    transaction_principal(row)
+                    transaction_proceeds(row)
                     if row.get("fidelity_type") == "Vanguard IRA"
                     else shares * price - fees
                 )
