@@ -318,8 +318,8 @@ def test_vanguard_upload_imports_rollover_and_vmfx_cash_rules(client):
 def test_vanguard_dashboard_counts_dividends_and_qbts_sale_profit(client):
     vanguard_csv = """Transaction Date,Transaction Type,Transaction Description,Symbol,Shares,Share Price,Principal Amount,Commissions and Fees,Account Number
 1/1/2026,Rollover Conversion,Rollover,,,-,10000,0,IRA-1
+1/2/2026,Sell,Sell QBTS,QBTS,100,41.82,4182,10,IRA-1
 1/2/2026,Buy,Buy QBTS,QBTS,100,10,1000,0,IRA-1
-1/3/2026,Sell,Sell QBTS,QBTS,100,41.82,4182,10,IRA-1
 1/4/2026,Dividend,Dividend payment,VTI,,1,1171.19,0,IRA-1
 """
 

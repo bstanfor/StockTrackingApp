@@ -174,6 +174,21 @@ def transaction_proceeds(row):
     return principal - abs(safe_float(row.get("fees")))
 
 
+def transaction_type_order(value):
+    return {"BUY": 0, "SELL": 1}.get(str(value or "").upper(), 2)
+
+
+def sort_transactions_for_fifo(trades):
+    if trades is None or trades.empty:
+        return trades
+    ordered = trades.copy()
+    ordered["_type_order"] = ordered["type"].map(transaction_type_order)
+    sort_columns = ["date", "_type_order"]
+    if "id" in ordered.columns:
+        sort_columns.append("id")
+    return ordered.sort_values(sort_columns, kind="mergesort").drop(columns="_type_order")
+
+
 def fidelity_action(action):
     action = str(action or "").upper()
     if "DIVIDEND RECEIVED" in action:
@@ -234,6 +249,18 @@ def import_vanguard_ira_activity(file):
     missing = required.difference(df.columns)
     if missing:
         raise ValueError("Missing Vanguard columns: " + ", ".join(sorted(missing)))
+
+    df["_transaction_date"] = pd.to_datetime(
+        vanguard_column(df, "transaction date", "trade date", "date"), errors="coerce"
+    )
+    df["_type_order"] = df["transaction type"].map(
+        lambda value: transaction_type_order(
+            "BUY" if "BUY" in str(value).upper() or "PURCHASE" in str(value).upper()
+            else "SELL" if "SELL" in str(value).upper() or "REDEMPTION" in str(value).upper()
+            else ""
+        )
+    )
+    df = df.sort_values(["_transaction_date", "_type_order"], kind="mergesort")
 
     imported = 0
     conn = get_db_connection()
@@ -679,7 +706,7 @@ def enrich_trades(trades):
         trades["realized_pct"] = pd.Series(dtype="float64")
         return trades
 
-    trades = trades.sort_values(["date", "id"]).copy()
+    trades = sort_transactions_for_fifo(trades)
     trades["trade_amount"] = trades.apply(transaction_principal, axis=1)
     trades["realized_pnl"] = 0.0
     trades["realized_pct"] = 0.0
