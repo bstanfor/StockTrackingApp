@@ -315,6 +315,36 @@ def test_vanguard_upload_imports_rollover_and_vmfx_cash_rules(client):
     assert positions["positions"] == []
 
 
+def test_vanguard_dashboard_counts_dividends_and_qbts_sale_profit(client):
+    vanguard_csv = """Transaction Date,Transaction Type,Transaction Description,Symbol,Shares,Share Price,Principal Amount,Commissions and Fees,Account Number
+1/1/2026,Rollover Conversion,Rollover,,,-,10000,0,IRA-1
+1/2/2026,Buy,Buy QBTS,QBTS,100,10,1000,0,IRA-1
+1/3/2026,Sell,Sell QBTS,QBTS,100,41.82,4182,10,IRA-1
+1/4/2026,Dividend,Dividend payment,VTI,,1,1171.19,0,IRA-1
+"""
+
+    response = client.post(
+        "/upload",
+        data={
+            "upload_type": "vanguard",
+            "file": (BytesIO(vanguard_csv.encode()), "vanguard.csv"),
+        },
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 302
+    trades, cash = main.load_data()
+    enriched = main.enrich_trades(trades)
+    qbts_sale = enriched[enriched["type"] == "SELL"].iloc[0]
+    assert qbts_sale["realized_pnl"] == 3182.0
+
+    analytics = main.performance_analytics(
+        enriched, cash, "Y", main.load_dividends()
+    )
+    assert analytics["total_dividends"] == 1171.19
+    assert main.compute_metrics(enriched, cash)["total_cash"] == 14353.19
+
+
 def test_fidelity_import_requires_dividend_zero_quantity_and_purchase_negative_amount(client):
     fidelity_csv = """Run Date,Account,Account Number,Action,Symbol,Description,Type,Price ($),Quantity,Commission,Fees ($),Accrued Interest,Amount ($),Settlement Date
 8/17/2026,401k,123,DIVIDEND RECEIVED FUND,FUND,Fund,Distributions,1,2,,,,12.50,
@@ -533,8 +563,8 @@ def test_compute_metrics_excludes_dividend_cash_flows_from_contribution_total(cl
     trades, cash = main.load_data()
     metrics = main.compute_metrics(trades, cash)
 
-    assert metrics["total_cash"] == 1000.0
-    assert metrics["portfolio_value"] == 1000.0
+    assert metrics["total_cash"] == 27946.0
+    assert metrics["portfolio_value"] == 27946.0
 
 
 def test_dashboard_preserves_period_when_account_filter_changes(client):

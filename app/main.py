@@ -167,6 +167,13 @@ def transaction_principal(row):
     return abs(safe_float(row.get("shares"))) * abs(safe_float(row.get("price")))
 
 
+def transaction_proceeds(row):
+    principal = transaction_principal(row)
+    if row.get("fidelity_type") == "Vanguard IRA":
+        return principal
+    return principal - abs(safe_float(row.get("fees")))
+
+
 def fidelity_action(action):
     action = str(action or "").upper()
     if "DIVIDEND RECEIVED" in action:
@@ -212,6 +219,13 @@ def vanguard_column(row, *names):
     return ""
 
 
+def vanguard_amount(row):
+    principal = safe_float(row.get("principal amount"))
+    if principal:
+        return principal
+    return safe_float(vanguard_column(row, "net amount", "amount"))
+
+
 def import_vanguard_ira_activity(file):
     df = pd.read_csv(BytesIO(file.read()), dtype=str)
     df.columns = [re.sub(r"\s+", " ", str(column).strip().lower()) for column in df.columns]
@@ -235,7 +249,7 @@ def import_vanguard_ira_activity(file):
                 continue
 
             symbol = str(row.get("symbol", "") or "").strip().upper()
-            principal = safe_float(row.get("principal amount"))
+            principal = vanguard_amount(row)
             fees = abs(safe_float(row.get("commissions and fees")))
             shares = abs(safe_float(row.get("shares")))
             price = abs(safe_float(vanguard_column(row, "share price", "price")))
@@ -254,6 +268,30 @@ def import_vanguard_ira_activity(file):
                 conn.execute(
                     "INSERT INTO cash_flows(account,date,amount,description) VALUES(?,?,?,?)",
                     (account, date.strftime("%Y-%m-%d"), abs(principal), "CONTRIBUTION"),
+                )
+                imported += 1
+                continue
+
+            if "DIVIDEND" in normalized_type:
+                description = str(
+                    row.get("transaction description", "") or ""
+                ).strip()
+                conn.execute(
+                    """
+                    INSERT INTO dividends(
+                        account,account_number,date,symbol,quantity,amount,
+                        description,type,price,fees,source_amount
+                    ) VALUES(?,?,?,?,?,?,?,?,?,?,?)
+                    """,
+                    (
+                        account, account_number or None, date.strftime("%Y-%m-%d"),
+                        symbol, shares, abs(principal), description,
+                        transaction_type, price, fees, principal,
+                    ),
+                )
+                conn.execute(
+                    "INSERT INTO cash_flows(account,date,amount,description) VALUES(?,?,?,?)",
+                    (account, date.strftime("%Y-%m-%d"), abs(principal), "DIVIDEND"),
                 )
                 imported += 1
                 continue
@@ -670,7 +708,12 @@ def enrich_trades(trades):
 
                 matched = min(remaining, lot["shares"])
 
-                pnl += matched * (row["price"] - lot["price"])
+                sale_price = (
+                    transaction_proceeds(row) / row["shares"]
+                    if row.get("fidelity_type") == "Vanguard IRA" and row["shares"]
+                    else row["price"]
+                )
+                pnl += matched * (sale_price - lot["price"])
                 total_cost += matched * lot["price"]  
 
                 lot["shares"] -= matched
@@ -679,8 +722,9 @@ def enrich_trades(trades):
                 if lot["shares"] == 0:
                     inventory[inventory_key].pop(0)
 
-            fees = row["fees"] if row["fees"] is not None and row["fees"] != "" else 0
-            pnl = pnl - fees
+            if row.get("fidelity_type") != "Vanguard IRA":
+                fees = row["fees"] if row["fees"] is not None and row["fees"] != "" else 0
+                pnl = pnl - fees
 
             trades.at[i, "realized_pnl"] = pnl 
         
@@ -933,6 +977,7 @@ def calculate_cash_flow(row):
     return 0
 
 def compute_metrics(trades, cash):
+    cash_balance = cash["amount"].sum() if cash is not None and not cash.empty else 0
     contribution_cash = (
         cash[cash["description"].map(is_contribution_description)]["amount"].sum()
         if cash is not None and not cash.empty and "description" in cash.columns
@@ -942,8 +987,8 @@ def compute_metrics(trades, cash):
 
     if trades is None or len(trades) == 0:
         return {
-        "total_cash": round(contributions, 2),
-        "portfolio_value": round(contributions, 2),
+        "total_cash": round(cash_balance, 2),
+        "portfolio_value": round(cash_balance, 2),
         "realized_pnl": 0,
         "unrealized_pnl": 0,
         "total_pnl": 0
@@ -952,7 +997,7 @@ def compute_metrics(trades, cash):
     trades = trades[~trades.apply(is_legacy_core_cash_transaction, axis=1)] if not trades.empty else trades
     trades["cf"] = trades.apply(calculate_cash_flow, axis=1)
 
-    cash_balance = contributions + trades["cf"].sum()
+    cash_balance += trades["cf"].sum()
     realized_pnl = trades["realized_pnl"].sum()
 
     # ✅ TRUE FIFO inventory for cost basis
@@ -1050,10 +1095,7 @@ def build_closed_positions(trades):
 
         sell_rows = group[group["type"] == "SELL"]
         realized_pnl = float(sell_rows["realized_pnl"].sum()) if not sell_rows.empty else 0.0
-        proceeds = (
-            float((sell_rows["trade_amount"] - sell_rows["fees"].fillna(0)).sum())
-            if not sell_rows.empty else 0.0
-        )
+        proceeds = float(sell_rows.apply(transaction_proceeds, axis=1).sum()) if not sell_rows.empty else 0.0
 
         closed.append({
             "account": account,
@@ -1085,19 +1127,19 @@ def build_activity(trades, cash, dividends=None):
         shares = t.get("shares", 0) or 0
         price = t.get("price", 0) or 0
         fees = t.get("fees", 0) or 0
-        trade_amount = shares * price
+        trade_amount = transaction_principal(t)
         lot_id = t.get("lot_id", "")
 
         account = t.get("account", "default")
         action = t["type"]
 
         if t["type"] == "BUY":
-            net_cash = -(trade_amount + fees)
+            net_cash = -transaction_proceeds(t)
             pl_dollar = 0
             pl_percent = 0
 
         elif t["type"] == "SELL":
-            net_cash = trade_amount - fees
+            net_cash = transaction_proceeds(t)
 
             pl_dollar = t.get("realized_pnl", 0)
 
