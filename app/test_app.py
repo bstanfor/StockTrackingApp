@@ -345,6 +345,29 @@ def test_vanguard_dashboard_counts_dividends_and_qbts_sale_profit(client):
     assert main.compute_metrics(enriched, cash)["total_cash"] == 14353.19
 
 
+def test_vanguard_conversion_incoming_is_counted_as_contribution(client):
+    vanguard_csv = """Transaction Date,Transaction Type,Transaction Description,Symbol,Shares,Share Price,Principal Amount,Commissions and Fees,Account Number
+8/17/2026,Conversion (incoming),Incoming conversion,,,-,8800.89,0,IRA-1
+"""
+
+    response = client.post(
+        "/upload",
+        data={
+            "upload_type": "vanguard",
+            "file": (BytesIO(vanguard_csv.encode()), "vanguard.csv"),
+        },
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 302
+    trades, cash = main.load_data()
+    assert trades.empty
+    assert [(row["description"], row["amount"]) for _, row in cash.iterrows()] == [
+        ("CONTRIBUTION", 8800.89)
+    ]
+    assert main.compute_metrics(trades, cash)["total_cash"] == 8800.89
+
+
 def test_fidelity_import_requires_dividend_zero_quantity_and_purchase_negative_amount(client):
     fidelity_csv = """Run Date,Account,Account Number,Action,Symbol,Description,Type,Price ($),Quantity,Commission,Fees ($),Accrued Interest,Amount ($),Settlement Date
 8/17/2026,401k,123,DIVIDEND RECEIVED FUND,FUND,Fund,Distributions,1,2,,,,12.50,

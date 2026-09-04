@@ -174,6 +174,15 @@ def transaction_proceeds(row):
     return principal - abs(safe_float(row.get("fees")))
 
 
+def transaction_cost_per_share(row):
+    shares = abs(safe_float(row.get("shares")))
+    if not shares:
+        return 0
+    if row.get("fidelity_type") == "Vanguard IRA":
+        return transaction_principal(row) / shares
+    return abs(safe_float(row.get("price")))
+
+
 def transaction_type_order(value):
     return {"BUY": 0, "SELL": 1}.get(str(value or "").upper(), 2)
 
@@ -225,6 +234,11 @@ def is_fdrxx_cash(symbol):
 def is_ignored_vanguard_transaction(transaction_type):
     normalized = re.sub(r"[^A-Z]", "", str(transaction_type or "").upper())
     return normalized in {"DIVIDENDREINVESTMENT", "SWEEPOUT", "SWEEPIN"}
+
+
+def is_vanguard_conversion(transaction_type):
+    normalized = re.sub(r"[^A-Z]", "", str(transaction_type or "").upper())
+    return normalized in {"ROLLOVERCONVERSION", "CONVERSIONINCOMING"}
 
 
 def vanguard_column(row, *names):
@@ -291,7 +305,7 @@ def import_vanguard_ira_activity(file):
             )
 
             normalized_type = re.sub(r"[^A-Z]", "", transaction_type.upper())
-            if normalized_type == "ROLLOVERCONVERSION":
+            if is_vanguard_conversion(transaction_type):
                 conn.execute(
                     "INSERT INTO cash_flows(account,date,amount,description) VALUES(?,?,?,?)",
                     (account, date.strftime("%Y-%m-%d"), abs(principal), "CONTRIBUTION"),
@@ -722,7 +736,7 @@ def enrich_trades(trades):
         if row["type"] == "BUY":
             inventory[inventory_key].append({
                 "shares": row["shares"],
-                "price": row["price"]
+                    "price": transaction_cost_per_share(row)
             })
 
         elif row["type"] == "SELL":
@@ -777,7 +791,7 @@ def get_open_lots(trades, account, symbol):
             lots.append({
                 "lot_id": row["id"],   # ✅ use trade id as lot_id
                 "shares_remaining": row["shares"],
-                "price": row["price"]
+                "price": transaction_cost_per_share(row)
             })
 
         elif row["type"] == "SELL":
@@ -837,7 +851,7 @@ def compute_positions(trades, cash):
 
                 inventory[sym].append({
                     "shares": shares,
-                    "price": price
+                    "price": transaction_cost_per_share(row)
                 })
                 positions[sym] += shares
 
@@ -850,7 +864,7 @@ def compute_positions(trades, cash):
                 if is_fdrxx_cash(sym):
                     cash_equivalent_lots.append({
                         "shares": shares,
-                        "price": price,
+                        "price": transaction_cost_per_share(row),
                     })
 
             elif row["type"] == "SELL":
@@ -880,7 +894,7 @@ def compute_positions(trades, cash):
                 if is_fdrxx_cash(sym):
                     cash_equivalent_lots.append({
                         "shares": -row["shares"],
-                        "price": row["price"],
+                        "price": transaction_cost_per_share(row),
                     })
 
         cash_val += sum(lot["shares"] * lot["price"] for lot in cash_equivalent_lots)
@@ -1333,7 +1347,9 @@ def account_performance(trades, cash): # ✅ Account Performance Dashboard
             inventory.setdefault(sym, [])
             
             if row["type"] == "BUY":
-                inventory[sym].append([row["shares"], row["price"]])
+                inventory[sym].append([
+                    row["shares"], transaction_cost_per_share(row)
+                ])
             elif row["type"] == "SELL":
                 remaining = row["shares"]
                 while remaining > 0 and inventory[sym]:
