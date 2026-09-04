@@ -592,6 +592,30 @@ def test_dashboard_analytics_normalizes_contribution_labels_and_totals_dividends
     assert analytics["total_dividends"] == 12.50
 
 
+def test_portfolio_growth_includes_realized_dividends_and_open_positions(client, monkeypatch):
+    add_account(client, "401K")
+    today = main.pd.Timestamp.today().strftime("%Y-%m-%d")
+    add_trade(
+        client, account="401K", date=today, symbol="AAPL",
+        action="BUY", shares="10", price="100", fees="0"
+    )
+    conn = main.get_db_connection()
+    conn.execute(
+        "INSERT INTO dividends(account,date,symbol,quantity,amount) VALUES(?,?,?,?,?)",
+        ("401K", today, "AAPL", 0, 25.0),
+    )
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr(main, "get_price_cached", lambda symbol: (120.0, 120.0))
+
+    trades, cash = main.load_data()
+    analytics = main.performance_analytics(
+        main.enrich_trades(trades), cash, "YTD", main.load_dividends()
+    )
+
+    assert analytics["total_pnl"] == 225.0
+
+
 def test_compute_metrics_excludes_dividend_cash_flows_from_contribution_total(client):
     add_account(client, "BrokerageLink")
     conn = main.get_db_connection()

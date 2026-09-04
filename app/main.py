@@ -1346,29 +1346,46 @@ def account_performance(trades, cash, dividends=None, period="YTD",
     if pd.isna(end):
         end = today
     end = end.normalize() + pd.Timedelta(days=1)
-    period_trades = trades[(trades["date"] >= start) & (trades["date"] < end)]
-    period_dividends = dividends[
-        (dividends["date"] >= start) & (dividends["date"] < end)
-    ] if not dividends.empty else dividends
+    period_trades = (
+        trades[(trades["date"] >= start) & (trades["date"] < end)]
+        if not trades.empty and "date" in trades.columns else trades
+    )
+    period_dividends = (
+        dividends[(dividends["date"] >= start) & (dividends["date"] < end)]
+        if not dividends.empty and "date" in dividends.columns else dividends
+    )
 
     results = []
 
-    accounts = set(trades["account"].unique()) if not trades.empty else set()
-    accounts |= set(cash["account"].unique()) if not cash.empty else set()
+    accounts = set(trades["account"].unique()) if "account" in trades.columns else set()
+    accounts |= set(cash["account"].unique()) if "account" in cash.columns else set()
+    accounts |= set(dividends["account"].unique()) if "account" in dividends.columns else set()
 
     for acc in accounts:
-        acc_trades = trades[trades["account"] == acc]
-        period_acc_trades = period_trades[period_trades["account"] == acc]
-
-        # ✅ realized P&L
-        realized = period_acc_trades["realized_pnl"].sum()
-        dividend_total = (
-            period_dividends[period_dividends["account"] == acc]["amount"].sum()
-            if include_dividends and not period_dividends.empty else 0
+        acc_trades = trades[trades["account"] == acc] if "account" in trades.columns else trades
+        period_acc_trades = (
+            period_trades[period_trades["account"] == acc]
+            if "account" in period_trades.columns else period_trades
         )
 
+        # ✅ realized P&L
+        realized = (
+            period_acc_trades["realized_pnl"].sum()
+            if "realized_pnl" in period_acc_trades.columns else 0
+        )
+        dividend_total = 0
+        if include_dividends and not period_dividends.empty:
+            dividend_rows = (
+                period_dividends[period_dividends["account"] == acc]
+                if "account" in period_dividends.columns else period_dividends
+            )
+            dividend_total = dividend_rows["amount"].sum()
+
         # ✅ invested capital (BUY trades)
-        invested = acc_trades[acc_trades["type"] == "BUY"]["trade_amount"].sum()
+        invested = (
+            acc_trades[acc_trades["type"] == "BUY"]["trade_amount"].sum()
+            if "type" in acc_trades.columns else 0
+        )
 
         # ✅ remaining cost (open positions)
         inventory = {}
@@ -1487,6 +1504,8 @@ def performance_analytics(trades, cash, period="1Y", dividends=None,
                            start_date=None, end_date=None):
 
     dividends = dividends if dividends is not None else pd.DataFrame()
+    if trades is not None and not trades.empty and "realized_pnl" not in trades.columns:
+        trades = enrich_trades(trades)
 
     if trades.empty and cash.empty and dividends.empty:
         return {
@@ -1527,6 +1546,9 @@ def performance_analytics(trades, cash, period="1Y", dividends=None,
     end = end.normalize() + pd.Timedelta(days=1)
 
     # True return uses the complete portfolio state, including unrealized gains.
+    all_trades = trades.copy()
+    all_cash = cash.copy()
+    all_dividends = dividends.copy()
     all_time_metrics = compute_metrics(trades.copy(), cash.copy())
 
     # ✅ invested capital to date (all-time, not just this period) is the correct return denominator
@@ -1572,8 +1594,18 @@ def performance_analytics(trades, cash, period="1Y", dividends=None,
 
     net_contribution = contrib - withdraw
 
-    # ✅ pnl
-    total_pnl = trades["realized_pnl"].sum() if not trades.empty else 0
+    # Growth includes period realized gains, current open-position gains, and
+    # period dividends. Account Performance uses the same calculation.
+    growth_performance = account_performance(
+        enrich_trades(all_trades.copy()) if not all_trades.empty else pd.DataFrame(),
+        all_cash if not all_cash.empty else pd.DataFrame(),
+        all_dividends,
+        period,
+        start_date,
+        end_date,
+        include_dividends=True,
+    )
+    total_pnl = sum(row["pnl"] for row in growth_performance)
 
     # ✅ true return: total realized + unrealized growth vs invested capital
     true_return_pct = (
@@ -1643,7 +1675,7 @@ def index():
     account_bal = account_balances(activity)
     period = request.args.get("period", "YTD").upper()
     if period not in {"30D", "60D", "90D", "Q", "Y", "YTD", "CUSTOM"}:
-        period = "1Y"
+        period = "YTD"
     start_date = request.args.get("start_date", "")
     end_date = request.args.get("end_date", "")
     chart = equity_chart(trades, cash, period=period, start_date=start_date, end_date=end_date)
