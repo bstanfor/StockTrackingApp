@@ -161,6 +161,9 @@ def test_add_activity_form_has_stock_and_cash_modes(client):
     assert "Upload General Data" in html
     assert 'id="activityEntryForm"' in html
     assert 'activityForm.parentElement !== drawer' in html
+    assert 'field.disabled = !showStock' in html
+    assert 'field.disabled = showStock' in html
+    assert 'toggleFields();' in html
     assert re.search(
         r'<input type="number" step="0\.001" inputmode="decimal" name="shares"',
         html,

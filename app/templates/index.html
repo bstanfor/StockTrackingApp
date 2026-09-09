@@ -1257,6 +1257,12 @@ function toggleFields(){
     const showStock = entryType === "stock";
     stockFields.style.display = showStock ? "block" : "none";
     cashFields.style.display = showStock ? "none" : "block";
+    stockFields.querySelectorAll("input, select, textarea").forEach(field => {
+        field.disabled = !showStock;
+    });
+    cashFields.querySelectorAll("input, select, textarea").forEach(field => {
+        field.disabled = showStock;
+    });
 
     if (showStock) {
         const action = document.getElementById("actionSelect").value;
@@ -1409,6 +1415,7 @@ localStorage.setItem("dark",document.body.classList.contains("dark"));
 
 window.onload=()=>{
     showTab(localStorage.getItem("tab")||"dashboard");
+    toggleFields();
 
     document.querySelectorAll("#activityTab > h3, #activityTab > form[action]").forEach(node => {
         document.getElementById("activityDrawer").appendChild(node);
