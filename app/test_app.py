@@ -383,6 +383,29 @@ def test_vanguard_upload_imports_rollover_and_vmfx_cash_rules(client):
     assert positions["positions"] == []
 
 
+def test_vanguard_dividend_reinvestment_description_creates_buy(client):
+    vanguard_csv = """Transaction Date,Transaction Type,Transaction Description,Symbol,Shares,Share Price,Principal Amount,Commissions and Fees,Account Number
+8/22/2026,Reinvestment,Dividend Reinvestment,VOO,0.125,471.864,58.98,0,IRA-2
+"""
+
+    response = client.post(
+        "/upload",
+        data={
+            "upload_type": "vanguard",
+            "file": (BytesIO(vanguard_csv.encode()), "vanguard.csv"),
+        },
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 302
+    trades, _ = main.load_data()
+    row = trades.iloc[0]
+    assert row["symbol"] == "VOO"
+    assert row["type"] == "BUY"
+    assert row["shares"] == pytest.approx(0.125)
+    assert row["price"] == pytest.approx(471.864)
+
+
 def test_vanguard_dashboard_counts_dividends_and_qbts_sale_profit(client):
     vanguard_csv = """Transaction Date,Transaction Type,Transaction Description,Symbol,Shares,Share Price,Principal Amount,Commissions and Fees,Account Number
 1/1/2026,Rollover Conversion,Rollover,,,-,10000,0,IRA-1

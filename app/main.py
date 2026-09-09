@@ -281,7 +281,17 @@ def import_vanguard_ira_activity(file):
     try:
         for _, row in df.iterrows():
             transaction_type = str(row.get("transaction type", "") or "").strip()
-            if is_ignored_vanguard_transaction(transaction_type):
+            transaction_description = str(
+                row.get("transaction description", "") or ""
+            ).strip()
+            is_dividend_reinvestment = (
+                "DIVIDEND REINVESTMENT" in transaction_description.upper()
+                and safe_float(row.get("shares")) != 0
+            )
+            if (
+                is_ignored_vanguard_transaction(transaction_type)
+                and not is_dividend_reinvestment
+            ):
                 continue
 
             date_value = vanguard_column(row, "transaction date", "trade date", "date")
@@ -305,6 +315,8 @@ def import_vanguard_ira_activity(file):
             )
 
             normalized_type = re.sub(r"[^A-Z]", "", transaction_type.upper())
+            if is_dividend_reinvestment:
+                normalized_type = "BUY"
             if is_vanguard_conversion(transaction_type):
                 conn.execute(
                     "INSERT INTO cash_flows(account,date,amount,description) VALUES(?,?,?,?)",
@@ -314,9 +326,6 @@ def import_vanguard_ira_activity(file):
                 continue
 
             if "DIVIDEND" in normalized_type:
-                description = str(
-                    row.get("transaction description", "") or ""
-                ).strip()
                 conn.execute(
                     """
                     INSERT INTO dividends(
@@ -326,7 +335,7 @@ def import_vanguard_ira_activity(file):
                     """,
                     (
                         account, account_number or None, date.strftime("%Y-%m-%d"),
-                        symbol, shares, abs(principal), description,
+                        symbol, shares, abs(principal), transaction_description,
                         transaction_type, price, fees, principal,
                     ),
                 )
