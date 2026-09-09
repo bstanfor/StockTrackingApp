@@ -735,11 +735,11 @@ Portfolio Growth: ${{ analytics.total_pnl }}
             <div class="field-grid two-up">
                 <div>
                     <label>Shares</label>
-                    <input type="number" step="0.01" inputmode="decimal" name="shares" placeholder="Shares" required>
+                    <input type="number" step="0.001" inputmode="decimal" name="shares" placeholder="Shares" required>
                 </div>
                 <div>
                     <label>Price</label>
-                    <input type="number" step="0.01" inputmode="decimal" name="price" placeholder="Price" required>
+                    <input type="number" step="0.001" inputmode="decimal" name="price" placeholder="Price" required>
                 </div>
             </div>
 
@@ -1205,7 +1205,7 @@ function inlineEdit(button, id) {
         }
         const inputType = ["shares", "price", "fees"].includes(name) ? "number" : "text";
         const decimalAttributes = inputType === "number"
-            ? 'step="0.01" inputmode="decimal"'
+            ? 'step="0.001" inputmode="decimal"'
             : "";
         cell.innerHTML = `<input class="inline-input" type="${inputType}" ${decimalAttributes} name="${name}" value="${value === "-" ? "" : value}">`;
     });

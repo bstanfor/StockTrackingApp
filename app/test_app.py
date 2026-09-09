@@ -160,11 +160,11 @@ def test_add_activity_form_has_stock_and_cash_modes(client):
     assert "Upload Vanguard IRA Activity" in html
     assert "Upload General Data" in html
     assert re.search(
-        r'<input type="number" step="0\.01" inputmode="decimal" name="shares"',
+        r'<input type="number" step="0\.001" inputmode="decimal" name="shares"',
         html,
     )
     assert re.search(
-        r'<input type="number" step="0\.01" inputmode="decimal" name="price"',
+        r'<input type="number" step="0\.001" inputmode="decimal" name="price"',
         html,
     )
 
@@ -221,6 +221,20 @@ def test_add_trade_preserves_hundredths_for_shares_and_price(client):
 
     assert row[0] == pytest.approx(1.23)
     assert row[1] == pytest.approx(45.67)
+
+
+def test_add_trade_accepts_three_decimal_shares_and_price(client):
+    add_account(client, "Brokerage")
+
+    response = add_trade(client, shares="66.205", price="45.678")
+
+    assert response.status_code == 200
+    conn = main.get_db_connection()
+    row = conn.execute("SELECT shares, price FROM transactions").fetchone()
+    conn.close()
+
+    assert row[0] == pytest.approx(66.205)
+    assert row[1] == pytest.approx(45.678)
 
 
 def test_fidelity_401k_upload_imports_activity(client):
