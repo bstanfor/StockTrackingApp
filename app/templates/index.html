@@ -1189,9 +1189,9 @@ async function showPositionDetail(account, symbol) {
     const data = await response.json();
     const position = data.position || {shares: 0, value: 0, cost_basis: 0, unrealized_pnl: 0};
     content.innerHTML = `<h2>${data.symbol} <small>${data.account}</small></h2>
-        <div class="detail-grid"><div class="detail-stat"><small>Shares</small>${position.shares}</div><div class="detail-stat"><small>Value</small>$${Number(position.value).toFixed(2)}</div><div class="detail-stat"><small>Cost basis</small>$${Number(position.cost_basis).toFixed(2)}</div></div>
-        <h3>Open lots</h3><ul>${data.lots.map(lot => `<li>Lot ${lot.lot_id}: ${lot.shares_remaining} shares @ $${Number(lot.price).toFixed(2)}</li>`).join("") || "<li>No open lots</li>"}</ul>
-        <h3>Transaction history</h3><ul>${data.history.map(item => `<li>${item.date}: ${item.type} ${item.shares || ""} @ $${item.price || "0"}</li>`).join("") || "<li>No history</li>"}</ul>`;
+        <div class="detail-grid"><div class="detail-stat"><small>Shares</small>${Number(position.shares).toFixed(2)}</div><div class="detail-stat"><small>Value</small>$${Number(position.value).toFixed(2)}</div><div class="detail-stat"><small>Cost basis</small>$${Number(position.cost_basis).toFixed(2)}</div></div>
+        <h3>Open lots</h3><ul>${data.lots.map(lot => `<li>Lot ${lot.lot_id}: ${Number(lot.shares_remaining).toFixed(2)} shares @ $${Number(lot.price).toFixed(2)}</li>`).join("") || "<li>No open lots</li>"}</ul>
+        <h3>Transaction history</h3><ul>${data.history.map(item => `<li>${item.date}: ${item.type} ${Number(item.shares || 0).toFixed(2)} @ $${Number(item.price || 0).toFixed(2)}</li>`).join("") || "<li>No history</li>"}</ul>`;
 }
 
 function inlineEdit(button, id) {
@@ -1445,7 +1445,7 @@ async function loadLots() {
     data.lots.forEach(lot => {
         const opt = document.createElement("option");
         opt.value = lot.lot_id;
-        opt.text = `Lot ${lot.lot_id} (${lot.shares_remaining} shares @ $${lot.price})`;
+        opt.text = `Lot ${lot.lot_id} (${Number(lot.shares_remaining).toFixed(2)} shares @ $${Number(lot.price).toFixed(2)})`;
         opt.dataset.price = lot.price;
         opt.dataset.shares = lot.shares_remaining;
         dropdown.appendChild(opt);
