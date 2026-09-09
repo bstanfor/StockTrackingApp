@@ -159,6 +159,8 @@ def test_add_activity_form_has_stock_and_cash_modes(client):
     assert "Upload Fidelity 401K Activity" in html
     assert "Upload Vanguard IRA Activity" in html
     assert "Upload General Data" in html
+    assert 'id="activityEntryForm"' in html
+    assert 'activityForm.parentElement !== drawer' in html
     assert re.search(
         r'<input type="number" step="0\.001" inputmode="decimal" name="shares"',
         html,
@@ -235,6 +237,33 @@ def test_add_trade_accepts_three_decimal_shares_and_price(client):
 
     assert row[0] == pytest.approx(66.205)
     assert row[1] == pytest.approx(45.678)
+
+
+def test_add_activity_stock_mode_accepts_vanguard_roth_thousandths(client):
+    add_account(client, "B-Vanguard Roth")
+
+    response = client.post("/add_trade", data={
+        "entry_type": "stock",
+        "account": "B-Vanguard Roth",
+        "date": "2026-09-09",
+        "stock": "VTI",
+        "action": "BUY",
+        "shares": "66.205",
+        "price": "271.864",
+        "fees": "0",
+    }, follow_redirects=True)
+
+    assert response.status_code == 200
+    conn = main.get_db_connection()
+    row = conn.execute(
+        "SELECT account, symbol, shares, price FROM transactions"
+    ).fetchone()
+    conn.close()
+
+    assert row[0] == "B-Vanguard Roth"
+    assert row[1] == "VTI"
+    assert row[2] == pytest.approx(66.205)
+    assert row[3] == pytest.approx(271.864)
 
 
 def test_fidelity_401k_upload_imports_activity(client):
