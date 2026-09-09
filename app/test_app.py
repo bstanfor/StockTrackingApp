@@ -201,6 +201,20 @@ def test_add_trade_accepts_cash_transaction_mode(client):
     assert [(row[0], row[1], row[2]) for row in rows] == [("Brokerage", "STARTINGCASH", 2500.0)]
 
 
+def test_add_trade_preserves_hundredths_for_shares_and_price(client):
+    add_account(client, "Brokerage")
+
+    response = add_trade(client, shares="1.23", price="45.67")
+
+    assert response.status_code == 200
+    conn = main.get_db_connection()
+    row = conn.execute("SELECT shares, price FROM transactions").fetchone()
+    conn.close()
+
+    assert row[0] == pytest.approx(1.23)
+    assert row[1] == pytest.approx(45.67)
+
+
 def test_fidelity_401k_upload_imports_activity(client):
     fidelity_csv = """Run Date,Account,Account Number,Action,Symbol,Description,Type,Price ($),Quantity,Commission,Fees ($),Accrued Interest,Amount ($),Settlement Date
 8/17/2026,BrokerageLink,123,YOU BOUGHT TEST CORP,TEST,Test Corp,Stocks,10.00,5,,,,-50.00,8/19/2026
