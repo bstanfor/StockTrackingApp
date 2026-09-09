@@ -927,13 +927,50 @@ def test_optional_account_number_is_persisted_and_displayed(client):
 
     assert main.load_account_details()["Brokerage"] == "4012"
     html = client.get("/").get_data(as_text=True)
-    assert "Brokerage (Acct # 4012)" in html
+    assert "Brokerage" in html
+    assert "Brokerage (Acct # 4012)" not in html
 
     client.post("/update_account_number", data={
         "account_name": "Brokerage",
         "account_number": ""
     })
     assert main.load_account_details()["Brokerage"] is None
+
+
+def test_dashboard_account_displays_omit_account_number(client):
+    client.post("/add_account", data={
+        "account_name": "B-Vanguard Roth",
+        "account_number": "50897807",
+    })
+    add_trade(
+        client,
+        account="B-Vanguard Roth",
+        symbol="AAPL",
+        shares="2",
+        price="100",
+    )
+    add_trade(
+        client,
+        account="B-Vanguard Roth",
+        symbol="MSFT",
+        action="BUY",
+        shares="1",
+        price="200",
+    )
+    add_trade(
+        client,
+        account="B-Vanguard Roth",
+        symbol="MSFT",
+        action="SELL",
+        shares="1",
+        price="210",
+    )
+
+    html = client.get("/").get_data(as_text=True)
+
+    assert 'value="B-Vanguard Roth"' in html
+    assert "B-Vanguard Roth (Acct # 50897807)" not in html
+    assert html.count("B-Vanguard Roth") >= 4
 
 
 def test_delete_account_removes_all_associated_data(client):

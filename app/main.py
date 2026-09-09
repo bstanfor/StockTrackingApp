@@ -1689,7 +1689,7 @@ def index():
         include_dividends=performance_view == "total",
     )
     for performance in account_perf:
-        performance["account_label"] = account_label(performance["account"], account_details)
+        performance["account_label"] = performance["account"]
     
     # analytics function
     analytics = performance_analytics(
