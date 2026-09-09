@@ -159,6 +159,14 @@ def test_add_activity_form_has_stock_and_cash_modes(client):
     assert "Upload Fidelity 401K Activity" in html
     assert "Upload Vanguard IRA Activity" in html
     assert "Upload General Data" in html
+    assert re.search(
+        r'<input type="number" step="0\.01" inputmode="decimal" name="shares"',
+        html,
+    )
+    assert re.search(
+        r'<input type="number" step="0\.01" inputmode="decimal" name="price"',
+        html,
+    )
 
 
 def test_blank_fees_are_displayed_as_dash_in_activity_table(client):
@@ -1021,6 +1029,30 @@ def test_update_trade_changes_values(client):
     trades, _ = main.load_data()
     assert trades.iloc[0]["symbol"] == "MSFT"
     assert trades.iloc[0]["shares"] == 5
+
+
+def test_update_trade_preserves_hundredths_for_shares_and_price(client):
+    add_account(client, "Brokerage")
+    add_trade(client)
+
+    trades, _ = main.load_data()
+    trade_id = int(trades.iloc[0]["id"])
+
+    response = client.post(f"/update/{trade_id}", data={
+        "account": "Brokerage",
+        "date": "2026-01-06",
+        "stock": "MSFT",
+        "action": "BUY",
+        "shares": "1.23",
+        "price": "45.67",
+        "fees": "0",
+        "lot": "0",
+    }, follow_redirects=True)
+
+    assert response.status_code == 200
+    trades, _ = main.load_data()
+    assert trades.iloc[0]["shares"] == pytest.approx(1.23)
+    assert trades.iloc[0]["price"] == pytest.approx(45.67)
 
 
 def test_account_filter_accepts_labelled_names_and_preserves_multi_select(client):

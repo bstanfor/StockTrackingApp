@@ -1203,7 +1203,11 @@ function inlineEdit(button, id) {
         if (name === "account") {
             value = cell.dataset.account || value.replace(/\s*\(Acct\s*#.*?\)\s*$/i, "").trim();
         }
-        cell.innerHTML = `<input class="inline-input" name="${name}" value="${value === "-" ? "" : value}">`;
+        const inputType = ["shares", "price", "fees"].includes(name) ? "number" : "text";
+        const decimalAttributes = inputType === "number"
+            ? 'step="0.01" inputmode="decimal"'
+            : "";
+        cell.innerHTML = `<input class="inline-input" type="${inputType}" ${decimalAttributes} name="${name}" value="${value === "-" ? "" : value}">`;
     });
     button.textContent = "Save";
     button.onclick = () => saveInlineEdit(row, id, button);
