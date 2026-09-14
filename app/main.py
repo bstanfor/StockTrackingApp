@@ -864,13 +864,15 @@ def compute_positions(trades, cash):
                 })
                 positions[sym] += shares
 
-                # ✅ include fees
-                cash_val -= (
-                    transaction_principal(row)
-                    if row.get("fidelity_type") == "Vanguard IRA"
-                    else shares * price + fees
-                )
-                if is_fdrxx_cash(sym):
+                if not (is_fdrxx_cash(sym) and row.get("fidelity_type") != "Vanguard IRA"):
+                    # Vanguard money-market buys reduce the cash balance; Fidelity FDRXX buys are
+                    # treated as cash-equivalent holdings and should not shrink the cash bucket.
+                    cash_val -= (
+                        transaction_principal(row)
+                        if row.get("fidelity_type") == "Vanguard IRA"
+                        else shares * price + fees
+                    )
+                if is_fdrxx_cash(sym) and row.get("fidelity_type") != "Vanguard IRA":
                     cash_equivalent_lots.append({
                         "shares": shares,
                         "price": transaction_cost_per_share(row),
@@ -883,12 +885,14 @@ def compute_positions(trades, cash):
                 remaining = shares
                 positions[sym] -= shares
 
-                # ✅ include fees
-                cash_val += (
-                    transaction_proceeds(row)
-                    if row.get("fidelity_type") == "Vanguard IRA"
-                    else shares * price - fees
-                )
+                if not (is_fdrxx_cash(sym) and row.get("fidelity_type") != "Vanguard IRA"):
+                    # Fidelity FDRXX sells are simply movement between cash-equivalent holdings and cash,
+                    # so they should not double-count the cash balance.
+                    cash_val += (
+                        transaction_proceeds(row)
+                        if row.get("fidelity_type") == "Vanguard IRA"
+                        else shares * price - fees
+                    )
 
                 while remaining > 0 and inventory[sym]:
                     lot = inventory[sym][0]
@@ -900,19 +904,19 @@ def compute_positions(trades, cash):
                     if lot["shares"] == 0:
                         inventory[sym].pop(0)
 
-                if is_fdrxx_cash(sym):
+                if is_fdrxx_cash(sym) and row.get("fidelity_type") != "Vanguard IRA":
                     cash_equivalent_lots.append({
                         "shares": -row["shares"],
                         "price": transaction_cost_per_share(row),
                     })
 
-        cash_val += sum(lot["shares"] * lot["price"] for lot in cash_equivalent_lots)
+        cash_equivalent_value = sum(lot["shares"] * lot["price"] for lot in cash_equivalent_lots)
 
         # -------------------------
         # BUILD POSITIONS
         # -------------------------
         account_positions = []
-        total_value = cash_val
+        total_value = cash_val + cash_equivalent_value
         has_fdrxx_cash = any(is_fdrxx_cash(symbol) for symbol in positions)
         cash_symbol = next(
             (symbol for symbol in positions if is_fdrxx_cash(symbol)), ""
@@ -1016,10 +1020,14 @@ def calculate_cash_flow(row):
     if row["type"] == "BUY":
         if row.get("fidelity_type") == "Vanguard IRA":
             return -principal
+        if is_fdrxx_cash(row.get("symbol")):
+            return 0
         return -shares * price - fees
     elif row["type"] == "SELL":
         if row.get("fidelity_type") == "Vanguard IRA":
             return principal
+        if is_fdrxx_cash(row.get("symbol")):
+            return 0
         return shares * price - fees
     elif row["type"] == "DIVIDEND":
         return price
@@ -1068,7 +1076,7 @@ def compute_metrics(trades, cash):
                 "price": row["price"]
             })
             positions[position_key] += row["shares"]
-            if is_fdrxx_cash(sym):
+            if is_fdrxx_cash(sym) and row.get("fidelity_type") != "Vanguard IRA":
                 cash_equivalent_positions[position_key] = (
                     cash_equivalent_positions.get(position_key, 0) + row["shares"]
                 )
@@ -1076,7 +1084,7 @@ def compute_metrics(trades, cash):
         elif row["type"] == "SELL":
             remaining = row["shares"]
             positions[position_key] -= row["shares"]
-            if is_fdrxx_cash(sym):
+            if is_fdrxx_cash(sym) and row.get("fidelity_type") != "Vanguard IRA":
                 cash_equivalent_positions[position_key] = (
                     cash_equivalent_positions.get(position_key, 0) - row["shares"]
                 )
@@ -1091,11 +1099,9 @@ def compute_metrics(trades, cash):
                 if lot["shares"] == 0:
                     inventory[position_key].pop(0)
 
-    cash_balance += sum(
-        shares * get_price_cached(symbol)[0]
-        for (account, symbol), shares in cash_equivalent_positions.items()
-        if shares > 0 and is_fdrxx_cash(symbol)
-    )
+    # Cash-equivalent money market positions are part of the account's cash-like value,
+    # but they should not be added back on top of the actual cash balance after a purchase.
+    # The reported cash balance should reflect the cash remaining after money market buys/sells.
 
     holdings_value = 0
     unrealized_pnl = 0

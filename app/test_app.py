@@ -378,8 +378,31 @@ def test_vanguard_upload_imports_rollover_and_vmfx_cash_rules(client):
 
     enriched = main.enrich_trades(trades)
     positions = main.compute_positions(enriched, cash)["Vanguard IRA"]
-    assert positions["cash"] == 5000.0
+    assert positions["cash"] == 4000.0
     assert positions["cash_symbol"] == "VMFXX (Cash)"
+    assert positions["positions"] == []
+
+
+def test_vanguard_money_market_purchase_does_not_inflate_cash_balance(client):
+    vanguard_csv = """Transaction Date,Transaction Type,Transaction Description,Symbol,Shares,Share Price,Principal Amount,Commissions and Fees,Account Number
+8/17/2026,Rollover Conversion,Rollover from old plan,,,-,5000.00,0,IRA-1
+8/18/2026,Buy,Money market purchase,VMFXX,2100,1.00,2100.00,0,IRA-1
+"""
+
+    response = client.post(
+        "/upload",
+        data={
+            "upload_type": "vanguard",
+            "file": (BytesIO(vanguard_csv.encode()), "vanguard.csv"),
+        },
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 302
+    trades, cash = main.load_data()
+    enriched = main.enrich_trades(trades)
+    positions = main.compute_positions(enriched, cash)["Vanguard IRA"]
+    assert positions["cash"] == 2900.0
     assert positions["positions"] == []
 
 
