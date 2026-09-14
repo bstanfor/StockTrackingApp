@@ -817,6 +817,55 @@ def get_open_lots(trades, account, symbol):
     # ✅ only return open lots
     return [l for l in lots if l["shares_remaining"] > 0]
 
+def cash_reconciliation_debug(account_name, trades, cash):
+    if trades is None:
+        trades = pd.DataFrame()
+    if cash is None:
+        cash = pd.DataFrame()
+
+    cash_rows = cash[cash["account"] == account_name] if not cash.empty and "account" in cash.columns else pd.DataFrame()
+    trade_rows = trades[trades["account"] == account_name] if not trades.empty and "account" in trades.columns else pd.DataFrame()
+
+    lines = []
+    starting_cash = float(cash_rows["amount"].sum()) if not cash_rows.empty else 0.0
+    cash_total = starting_cash
+    lines.append(f"starting cash = {starting_cash:.2f}")
+
+    for _, row in trade_rows.iterrows():
+        if is_legacy_core_cash_transaction(row):
+            continue
+
+        sym = str(row.get("symbol", ""))
+        if row["type"] == "BUY":
+            if is_fdrxx_cash(sym) and row.get("fidelity_type") != "Vanguard IRA":
+                lines.append(f"{sym} cash-equivalent BUY = +{float(row.get('shares', 0) or 0) * float(row.get('price', 0) or 0):.2f} (not a cash outflow)")
+                continue
+
+            amount = (
+                transaction_principal(row)
+                if row.get("fidelity_type") == "Vanguard IRA"
+                else float(row.get("shares", 0) or 0) * float(row.get("price", 0) or 0) + float(row.get("fees", 0) or 0)
+            )
+            cash_total -= amount
+            lines.append(f"{sym} BUY = -{amount:.2f}")
+
+        elif row["type"] == "SELL":
+            if is_fdrxx_cash(sym) and row.get("fidelity_type") != "Vanguard IRA":
+                lines.append(f"{sym} cash-equivalent SELL = +{float(row.get('shares', 0) or 0) * float(row.get('price', 0) or 0):.2f} (not a cash inflow)")
+                continue
+
+            amount = (
+                transaction_proceeds(row)
+                if row.get("fidelity_type") == "Vanguard IRA"
+                else float(row.get("shares", 0) or 0) * float(row.get("price", 0) or 0) - float(row.get("fees", 0) or 0)
+            )
+            cash_total += amount
+            lines.append(f"{sym} SELL = +{amount:.2f}")
+
+    lines.append(f"final cash = {cash_total:.2f}")
+    return "\n".join(lines)
+
+
 def compute_positions(trades, cash):
     if trades.empty and (cash is None or cash.empty):
         return {}
@@ -966,6 +1015,7 @@ def compute_positions(trades, cash):
             "cash": round(cash_val, 2),  # ✅ FIXED CASH
             "total_value": round(total_value, 2),
             "cash_symbol": f"{cash_symbol} (Cash)" if has_fdrxx_cash else "CASH",
+            "cash_debug": cash_reconciliation_debug(acc, trades, cash),
         }
 
     # -------------------------

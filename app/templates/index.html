@@ -555,6 +555,17 @@ Portfolio Growth: ${{ analytics.total_pnl }}
     </td>
 </tr>
 
+{% if acct.cash_debug %}
+<tr class="debug-data-row" data-debug-row="true" style="display: none;">
+    <td colspan="9">
+        <div class="debug-data-block" style="margin: 8px 0; padding: 8px 10px; background: #f8f9fa; border: 1px solid #ddd; border-radius: 6px; font-family: monospace; font-size: 12px; white-space: pre-wrap;">
+            <strong>Cash reconciliation</strong>
+            <br>{{ acct.cash_debug|replace('\n', '<br>')|safe }}
+        </div>
+    </td>
+</tr>
+{% endif %}
+
 {% for p in acct.positions %}
 <tr>
 
@@ -1024,6 +1035,7 @@ Portfolio Growth: ${{ analytics.total_pnl }}
 <h2>Settings</h2>
 <p>Workspace preferences</p>
 <button type="button" onclick="toggleDarkMode()">Toggle dark mode</button>
+<button type="button" id="debugToggleButton" onclick="toggleDebugData()">⚙️ Debug data: Off</button>
 <button type="button" onclick="resetWorkspace()">Reset saved view</button>
 <h3>Modify Accounts</h3>
 <form method="POST" action="/add_account">
@@ -1183,7 +1195,39 @@ document.addEventListener("submit", (event) => {
     sanitizeAccountInputs(form);
 });
 
-function resetWorkspace() { localStorage.removeItem("tab"); localStorage.removeItem("dark"); location.reload(); }
+function getStoredBoolean(key, fallback = false) {
+    const value = localStorage.getItem(key);
+    if (value === null) return fallback;
+    return value === "true";
+}
+
+function updateDebugDataToggleButton() {
+    const button = document.getElementById("debugToggleButton");
+    if (!button) return;
+    const enabled = getStoredBoolean("debugDataEnabled", false);
+    button.textContent = enabled ? "⚙️ Debug data: On" : "⚙️ Debug data: Off";
+    button.setAttribute("aria-pressed", String(enabled));
+    document.querySelectorAll("[data-debug-row='true']").forEach((row) => {
+        row.style.display = enabled ? "table-row" : "none";
+    });
+}
+
+function toggleDebugData() {
+    const enabled = !getStoredBoolean("debugDataEnabled", false);
+    localStorage.setItem("debugDataEnabled", String(enabled));
+    updateDebugDataToggleButton();
+}
+
+function resetWorkspace() {
+    localStorage.removeItem("tab");
+    localStorage.removeItem("dark");
+    localStorage.removeItem("debugDataEnabled");
+    location.reload();
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+    updateDebugDataToggleButton();
+});
 
 async function showPositionDetail(account, symbol) {
     const dialog = document.getElementById("positionDialog");
