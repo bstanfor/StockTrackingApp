@@ -241,6 +241,11 @@ def is_vanguard_conversion(transaction_type):
     return normalized in {"ROLLOVERCONVERSION", "CONVERSIONINCOMING"}
 
 
+def is_vanguard_distribution(transaction_type):
+    normalized = re.sub(r"[^A-Z]", "", str(transaction_type or "").upper())
+    return normalized in {"DISTRIBUTION", "WITHDRAWAL"}
+
+
 def vanguard_column(row, *names):
     for name in names:
         if name in row:
@@ -321,6 +326,14 @@ def import_vanguard_ira_activity(file):
                 conn.execute(
                     "INSERT INTO cash_flows(account,date,amount,description) VALUES(?,?,?,?)",
                     (account, date.strftime("%Y-%m-%d"), abs(principal), "CONTRIBUTION"),
+                )
+                imported += 1
+                continue
+
+            if is_vanguard_distribution(transaction_type):
+                conn.execute(
+                    "INSERT INTO cash_flows(account,date,amount,description) VALUES(?,?,?,?)",
+                    (account, date.strftime("%Y-%m-%d"), -abs(principal), "WITHDRAWAL"),
                 )
                 imported += 1
                 continue

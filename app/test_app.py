@@ -406,6 +406,30 @@ def test_vanguard_money_market_purchase_does_not_inflate_cash_balance(client):
     assert positions["positions"] == []
 
 
+def test_vanguard_distribution_reduces_cash_balance(client):
+    vanguard_csv = """Transaction Date,Transaction Type,Transaction Description,Symbol,Shares,Share Price,Principal Amount,Commissions and Fees,Account Number
+8/17/2026,Rollover Conversion,Rollover from old plan,,,-,5000.00,0,IRA-1
+8/18/2026,Distribution,Cash distribution,,,-,2100.00,0,IRA-1
+"""
+
+    response = client.post(
+        "/upload",
+        data={
+            "upload_type": "vanguard",
+            "file": (BytesIO(vanguard_csv.encode()), "vanguard.csv"),
+        },
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 302
+    _, cash = main.load_data()
+    assert [(row["description"], row["amount"]) for _, row in cash.iterrows()] == [
+        ("CONTRIBUTION", 5000.0),
+        ("WITHDRAWAL", -2100.0),
+    ]
+    assert main.compute_metrics(main.enrich_trades(main.load_data()[0]), cash)["total_cash"] == 2900.0
+
+
 def test_vanguard_dividend_reinvestment_description_creates_buy(client):
     vanguard_csv = """Transaction Date,Transaction Type,Transaction Description,Symbol,Shares,Share Price,Principal Amount,Commissions and Fees,Account Number
 8/22/2026,Reinvestment,Dividend Reinvestment,VOO,0.125,471.864,58.98,0,IRA-2
