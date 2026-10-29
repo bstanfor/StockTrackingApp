@@ -1,5 +1,6 @@
 venv/
 finance.db
+Test-DataSets/
 __pycache__/
 *.pyc
 *.pyo
