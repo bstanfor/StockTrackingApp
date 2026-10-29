@@ -11,6 +11,7 @@ from io import BytesIO
 from html.parser import HTMLParser
 
 import pytest
+from openpyxl import Workbook
 
 import main
 
@@ -381,6 +382,162 @@ def test_vanguard_upload_imports_rollover_and_vmfx_cash_rules(client):
     assert positions["cash"] == 4000.0
     assert positions["cash_symbol"] == "VMFXX (Cash)"
     assert positions["positions"] == []
+
+
+def test_vanguard_custom_activity_report_upload_uses_account_input(client):
+    report_csv = """Custom report created on: 10/28/2026.,,,,,,,,,
+This report only includes transactions that were settled from: 01/01/2016 to 10/28/2026.,,,,,,,,,
+,,,,,,,,,
+Settlement date,Trade date,Symbol,Name,Type,Account type,Quantity,Price,Commission & fees**,Amount
+1/10/2018,1/10/2018,,CASH,Conversion (incoming),CASH,,,,"$1,000.0000"
+1/17/2018,1/16/2018,VFIAX,Vanguard 500 Index Fund,Buy,CASH,4.0000,$250.0000,Free,"-$1,000.0000"
+1/17/2018,1/17/2018,VMFXX,Vanguard Federal Money Market Fund,Sweep in,CASH,,,,"-$1,000.0000"
+1/18/2018,1/18/2018,VFIAX,Vanguard 500 Index Fund,Dividend,CASH,,,$0.0000,$10.0000
+1/18/2018,1/18/2018,VFIAX,Vanguard 500 Index Fund,Reinvestment,CASH,0.0400,$250.0000,,-$10.0000
+1/20/2018,1/18/2018,VFIAX,Vanguard 500 Index Fund,Sell,CASH,-1.0000,$250.0000,$1.0000,$249.0000
+1/21/2018,1/21/2018,,From bank,Distribution,CASH,,,,-$100.0000
+"""
+    page = client.get("/")
+    assert b'name="vanguard_account_name"' in page.data
+    assert b'name="vanguard_account_number"' in page.data
+
+    response = client.post(
+        "/upload",
+        data={
+            "upload_type": "vanguard",
+            "vanguard_account_name": "B-Vanguard Roth",
+            "vanguard_account_number": "ROTH-123",
+            "file": (BytesIO(report_csv.encode()), "activity.csv"),
+        },
+        content_type="multipart/form-data",
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert b"Imported 6 Vanguard activities for B-Vanguard Roth." in response.data
+    trades, cash = main.load_data()
+    assert len(trades) == 3
+    assert trades["type"].value_counts().to_dict() == {"BUY": 2, "SELL": 1}
+    buy = trades[(trades["type"] == "BUY") & (trades["symbol"] == "VFIAX")].iloc[0]
+    assert buy["account"] == "B-Vanguard Roth"
+    assert str(buy["date"])[:10] == "2018-01-16"
+    assert buy["settlement_date"] == "2018-01-17"
+    assert buy["shares"] == pytest.approx(4)
+    assert buy["source_amount"] == pytest.approx(-1000)
+
+    assert main.load_dividends()["amount"].tolist() == [10]
+    assert [(row["description"], row["amount"]) for _, row in cash.iterrows()] == [
+        ("CONTRIBUTION", 1000),
+        ("DIVIDEND", 10),
+        ("WITHDRAWAL", -100),
+    ]
+    conn = main.get_db_connection()
+    account = conn.execute(
+        "SELECT account_number FROM accounts WHERE name=?",
+        ("B-Vanguard Roth",),
+    ).fetchone()
+    conn.close()
+    assert account["account_number"] == "ROTH-123"
+
+
+def test_vanguard_upload_shows_error_when_no_rows_are_imported(client):
+    report_csv = """Settlement date,Trade date,Symbol,Name,Type,Account type,Quantity,Price,Commission & fees**,Amount
+1/10/2018,1/10/2018,TEST,Test,Unsupported activity,CASH,1,$1.00,,$1.00
+"""
+
+    response = client.post(
+        "/upload",
+        data={
+            "upload_type": "vanguard",
+            "vanguard_account_name": "B-Vanguard Roth",
+            "file": (BytesIO(report_csv.encode()), "activity.csv"),
+        },
+        content_type="multipart/form-data",
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert b"No supported Vanguard activity rows were found in the file." in response.data
+    assert "B-Vanguard Roth" not in main.load_accounts()
+
+
+def test_vanguard_custom_activity_report_upload_accepts_xlsx(client):
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.append(["Custom report created on: 10/28/2026."])
+    worksheet.append(["This report only includes settled transactions."])
+    worksheet.append([])
+    worksheet.append([
+        "Settlement date", "Trade date", "Symbol", "Name", "Type",
+        "Account type", "Quantity", "Price", "Commission & fees**", "Amount",
+    ])
+    worksheet.append([
+        "1/10/2018", "1/10/2018", "", "CASH", "Conversion (incoming)",
+        "CASH", "", "", "", "$1,000.0000",
+    ])
+    worksheet.append([
+        "1/17/2018", "1/16/2018", "VFIAX", "Vanguard 500 Index Fund",
+        "Buy", "CASH", "4.0000", "$250.0000", "Free", "-$1,000.0000",
+    ])
+    workbook_data = BytesIO()
+    workbook.save(workbook_data)
+    workbook_data.seek(0)
+
+    response = client.post(
+        "/upload",
+        data={
+            "upload_type": "vanguard",
+            "vanguard_account_name": "B-Vanguard Roth",
+            "file": (workbook_data, "activity.xlsx"),
+        },
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 302
+    trades, cash = main.load_data()
+    assert len(trades) == 1
+    assert trades.iloc[0]["symbol"] == "VFIAX"
+    assert trades.iloc[0]["source_amount"] == pytest.approx(-1000)
+    assert cash.iloc[0]["amount"] == pytest.approx(1000)
+
+
+def test_k_vanguard_custom_report_imports_signed_share_activity(client):
+    report_path = os.path.abspath(os.path.join(
+        os.path.dirname(__file__),
+        "..",
+        "Test-DataSets",
+        "K-customActivityReport_1-1-2016_10-28-2026.csv",
+    ))
+    with open(report_path, "rb") as report:
+        response = client.post(
+            "/upload",
+            data={
+                "upload_type": "vanguard",
+                "vanguard_account_name": "K-Vanguard Roth IRA",
+                "file": (
+                    report,
+                    "K-customActivityReport_1-1-2016_10-28-2026.csv",
+                ),
+            },
+            content_type="multipart/form-data",
+        )
+
+    assert response.status_code == 302
+    trades, cash = main.load_data()
+    account_positions = main.compute_positions(
+        main.enrich_trades(trades), cash
+    )["K-Vanguard Roth IRA"]
+    assert {
+        position["symbol"]: round(position["shares"], 3)
+        for position in account_positions["positions"]
+    } == {
+        "WOOF": 179,
+        "VFIAX": 63.561,
+        "VSMAX": 155.296,
+        "VUSTX": 560.059,
+    }
+    assert account_positions["cash"] == pytest.approx(35138.67)
+    assert account_positions["cash_symbol"] == "VMFXX (Cash)"
 
 
 def test_vanguard_money_market_purchase_does_not_inflate_cash_balance(client):

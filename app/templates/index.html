@@ -808,15 +808,39 @@ Portfolio Growth: ${{ analytics.total_pnl }}
 </form>
 
 <h3>Upload Transactions</h3>
+{% if request.args.get("upload_message") %}
+<p role="status">{{ request.args.get("upload_message") }}</p>
+{% endif %}
+{% if request.args.get("upload_error") %}
+<p role="alert">Vanguard upload failed: {{ request.args.get("upload_error") }}</p>
+{% endif %}
 <form method="POST" action="/upload" enctype="multipart/form-data">
     <input type="file" name="file" accept=".csv,.xlsx,.xls" required>
-    <select name="upload_type" aria-label="Upload format">
+    <select id="uploadTypeSelect" name="upload_type" aria-label="Upload format">
         <option value="fidelity">Upload Fidelity 401K Activity</option>
         <option value="vanguard">Upload Vanguard IRA Activity</option>
         <option value="general">Upload General Data</option>
     </select>
+    <div id="vanguardAccountFields" hidden>
+        <label for="vanguardAccountName">Vanguard account name</label>
+        <input id="vanguardAccountName" name="vanguard_account_name" value="Vanguard IRA" required>
+        <label for="vanguardAccountNumber">Vanguard account number (optional)</label>
+        <input id="vanguardAccountNumber" name="vanguard_account_number">
+    </div>
     <button type="submit">Upload</button>
 </form>
+<script>
+    const uploadTypeSelect = document.getElementById("uploadTypeSelect");
+    const vanguardAccountFields = document.getElementById("vanguardAccountFields");
+    const vanguardAccountName = document.getElementById("vanguardAccountName");
+    function updateVanguardAccountFields() {
+        const isVanguardUpload = uploadTypeSelect.value === "vanguard";
+        vanguardAccountFields.hidden = !isVanguardUpload;
+        vanguardAccountName.required = isVanguardUpload;
+    }
+    uploadTypeSelect.addEventListener("change", updateVanguardAccountFields);
+    updateVanguardAccountFields();
+</script>
 
 
 <!-- ✅ FILTER + SEARCH -->
