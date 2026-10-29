@@ -247,6 +247,11 @@ def is_vanguard_distribution(transaction_type):
     return normalized in {"DISTRIBUTION", "WITHDRAWAL"}
 
 
+def is_vanguard_cash_adjustment(transaction_type):
+    normalized = re.sub(r"[^A-Z]", "", str(transaction_type or "").upper())
+    return normalized == "CASHADJUSTMENT"
+
+
 def is_vanguard_non_cash_transfer(row):
     if str(row.get("fidelity_type", "")) != "Vanguard IRA":
         return False
@@ -446,6 +451,14 @@ def import_vanguard_ira_activity(file, account_name=None, account_number=None):
                 conn.execute(
                     "INSERT INTO cash_flows(account,date,amount,description) VALUES(?,?,?,?)",
                     (account, date.strftime("%Y-%m-%d"), abs(principal), "CONTRIBUTION"),
+                )
+                imported += 1
+                continue
+
+            if is_vanguard_cash_adjustment(transaction_type):
+                conn.execute(
+                    "INSERT INTO cash_flows(account,date,amount,description) VALUES(?,?,?,?)",
+                    (account, date.strftime("%Y-%m-%d"), principal, "CASH ADJUSTMENT"),
                 )
                 imported += 1
                 continue

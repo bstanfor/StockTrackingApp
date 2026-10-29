@@ -536,8 +536,12 @@ def test_k_vanguard_custom_report_imports_signed_share_activity(client):
         "VSMAX": 155.296,
         "VUSTX": 560.059,
     }
-    assert account_positions["cash"] == pytest.approx(35138.67)
+    assert account_positions["cash"] == pytest.approx(35135.65)
     assert account_positions["cash_symbol"] == "VMFXX (Cash)"
+    assert (
+        cash.loc[cash["description"] == "CASH ADJUSTMENT", "amount"].sum()
+        == pytest.approx(-3.02)
+    )
 
 
 def test_vanguard_money_market_purchase_does_not_inflate_cash_balance(client):
