@@ -939,11 +939,107 @@ def test_compute_metrics_excludes_dividend_cash_flows_from_contribution_total(cl
 def test_dashboard_preserves_period_when_account_filter_changes(client):
     add_account(client, "401K")
 
-    html = client.get("/?account=401K&period=YTD").get_data(as_text=True)
+    html = client.get(
+        "/?dashboard=investment&account=401K&period=YTD"
+    ).get_data(as_text=True)
 
     assert 'name="period" value="YTD"' in html
     assert "Year to Date" in html
     assert 'name="account" value="401K"' in html
+    assert 'name="dashboard" value="investment"' in html
+
+
+def test_dashboards_filter_accounts_and_show_manual_net_worth(client):
+    add_account(client, "Fidelity 401K")
+    add_account(client, "Personal Brokerage")
+    add_cash(client, account="Fidelity 401K", amount="1000")
+    add_trade(
+        client, account="Fidelity 401K", symbol="AAPL", shares="10",
+        price="50", fees="0",
+    )
+    add_cash(client, account="Personal Brokerage", amount="2500")
+
+    retirement_html = client.get("/?dashboard=retirement").get_data(as_text=True)
+    investment_html = client.get("/?dashboard=investment").get_data(as_text=True)
+    retirement_filter = retirement_html.split(
+        '<select id="accountSelect"', 1
+    )[1].split("</select>", 1)[0]
+    investment_filter = investment_html.split(
+        '<select id="accountSelect"', 1
+    )[1].split("</select>", 1)[0]
+    assert "Retirement Dashboard" in retirement_html
+    assert 'value="Fidelity 401K"' in retirement_filter
+    assert 'value="Personal Brokerage"' not in retirement_filter
+    assert "Investment Dashboard" in investment_html
+    assert 'value="Personal Brokerage"' in investment_filter
+    assert 'value="Fidelity 401K"' not in investment_filter
+
+    client.post("/add_manual_account", data={
+        "account_name": "Checking",
+        "account_type": "ASSET",
+        "opening_balance": "20000",
+        "dashboard": "net-worth",
+    })
+    client.post("/add_manual_account", data={
+        "account_name": "Mortgage",
+        "account_type": "DEBT",
+        "opening_balance": "5000",
+        "interest_rate": "6.25",
+        "dashboard": "net-worth",
+    })
+    net_worth_html = client.get("/?dashboard=net-worth").get_data(as_text=True)
+    assert "Net Worth Dashboard" in net_worth_html
+    assert 'data-net-worth-account="Checking"' in net_worth_html
+    assert 'data-net-worth-debt="Mortgage"' in net_worth_html
+    assert "$24000.00" in net_worth_html
+    assert "$5000.00" in net_worth_html
+    assert "$19000.00" in net_worth_html
+
+
+def test_manual_debt_payment_updates_balance_and_records_principal_interest(client):
+    client.post("/add_manual_account", data={
+        "account_name": "Checking",
+        "account_type": "ASSET",
+        "opening_balance": "3000",
+        "dashboard": "retirement",
+    })
+    response = client.post("/add_manual_account", data={
+        "account_name": "Auto Loan",
+        "account_type": "DEBT",
+        "opening_balance": "12000",
+        "interest_rate": "5.75",
+        "dashboard": "retirement",
+    })
+    assert response.status_code == 302
+    accounts = {row["name"]: row for row in main.load_manual_accounts()}
+    account = accounts["Auto Loan"]
+
+    response = client.post("/record_manual_transaction", data={
+        "account_id": str(account["id"]),
+        "date": "2026-10-30",
+        "transaction_type": "PAYMENT",
+        "amount": "500",
+        "principal_amount": "400",
+        "interest_amount": "100",
+        "description": "Monthly payment",
+        "paid_from_account_id": str(accounts["Checking"]["id"]),
+        "dashboard": "retirement",
+    })
+
+    assert response.status_code == 302
+    updated = {row["name"]: row for row in main.load_manual_accounts()}
+    assert updated["Auto Loan"]["current_balance"] == pytest.approx(11600)
+    assert updated["Checking"]["current_balance"] == pytest.approx(2500)
+    transaction = next(
+        row for row in main.load_manual_account_transactions()
+        if row["transaction_type"] == "PAYMENT"
+    )
+    assert transaction["transaction_type"] == "PAYMENT"
+    assert transaction["amount"] == pytest.approx(500)
+    assert transaction["principal_amount"] == pytest.approx(400)
+    assert transaction["interest_amount"] == pytest.approx(100)
+    assert transaction["paid_from_account_name"] == "Checking"
+    assert "tab=activity" in response.headers["Location"]
 
 
 def test_account_performance_selector_defaults_to_ytd_and_includes_dividends(client):
@@ -1115,7 +1211,7 @@ def test_dashboard_shows_total_portfolio_value_and_return_label(client):
     add_cash(client, amount="5000")
     add_trade(client, shares="10", price="150", fees="1")
 
-    resp = client.get("/")
+    resp = client.get("/?dashboard=investment")
     html = resp.get_data(as_text=True)
 
     assert resp.status_code == 200
@@ -1177,7 +1273,7 @@ def test_position_price_cells_include_ticker_metadata(client):
     add_trade(client, symbol="SPCX", shares="5", price="135")
 
     parser = PriceCellParser()
-    parser.feed(client.get("/").get_data(as_text=True))
+    parser.feed(client.get("/?dashboard=investment").get_data(as_text=True))
 
     assert sorted(parser.symbols) == ["AAPL", "SPCX"]
     assert all(symbol and symbol.lower() != "undefined" for symbol in parser.symbols)
@@ -1279,22 +1375,61 @@ def test_settings_shows_confirmed_account_delete_controls(client):
 
     html = client.get("/").get_data(as_text=True)
 
+    assert 'action="/rename_account"' in html
+    assert 'name="new_name" value="Brokerage"' in html
     assert 'action="/delete_account/Brokerage"' in html
     assert "all associated transactions, cash flows, and dividends" in html
 
 
 def test_rename_account_updates_related_records(client):
-    add_account(client, "OldName")
-    add_trade(client, account="OldName")
-    add_cash(client, account="OldName")
+    client.post("/add_account", data={
+        "account_name": "BrokerageLink Roth",
+        "account_number": "123456",
+    })
+    add_trade(client, account="BrokerageLink Roth")
+    add_cash(client, account="BrokerageLink Roth")
+    conn = main.get_db_connection()
+    conn.execute(
+        """
+        INSERT INTO dividends(account, date, symbol, quantity, amount)
+        VALUES(?, ?, ?, ?, ?)
+        """,
+        ("BrokerageLink Roth", "2026-01-06", "FUND", 0, 25),
+    )
+    conn.commit()
+    conn.close()
 
-    client.post("/rename_account", data={"old_name": "OldName", "new_name": "NewName"},
-                follow_redirects=True)
+    response = client.post("/rename_account", data={
+        "old_name": "BrokerageLink Roth",
+        "new_name": "Fidelity BrokerageLink Roth",
+    })
+    assert "tab=settings" in response.headers["Location"]
+    assert "Renamed" in client.get(response.headers["Location"]).get_data(as_text=True)
 
     trades, cash = main.load_data()
-    assert "NewName" in trades["account"].values
-    assert "NewName" in cash["account"].values
-    assert "OldName" not in main.load_accounts()
+    dividends = main.load_dividends()
+    assert "Fidelity BrokerageLink Roth" in trades["account"].values
+    assert "Fidelity BrokerageLink Roth" in cash["account"].values
+    assert "Fidelity BrokerageLink Roth" in dividends["account"].values
+    assert "BrokerageLink Roth" not in main.load_accounts()
+    assert main.load_account_details()["Fidelity BrokerageLink Roth"] == "123456"
+    retirement_html = client.get("/?dashboard=retirement").get_data(as_text=True)
+    assert 'value="Fidelity BrokerageLink Roth"' in retirement_html
+
+
+def test_rename_account_rejects_duplicate_name_without_changing_records(client):
+    add_account(client, "BrokerageLink")
+    add_account(client, "Fidelity BrokerageLink")
+
+    response = client.post("/rename_account", data={
+        "old_name": "BrokerageLink",
+        "new_name": " fidelity brokeragelink ",
+    })
+    settings_html = client.get(response.headers["Location"]).get_data(as_text=True)
+
+    assert "An account with that name already exists." in settings_html
+    assert "BrokerageLink" in main.load_accounts()
+    assert "Fidelity BrokerageLink" in main.load_accounts()
 
 
 # ---------------------------
@@ -1572,6 +1707,59 @@ def test_equity_chart_includes_daily_cash_balance(monkeypatch):
     monkeypatch.setattr(main.px, "line", capture_line)
 
     assert main.equity_chart(trades, cash) == "chart"
+    assert captured["values"].iloc[-1] == 1000.13
+
+
+def test_equity_chart_uses_selected_custom_range_and_prior_balance(monkeypatch):
+    trades = main.pd.DataFrame([
+        {"date": "2026-09-30", "realized_pnl": 125.0},
+        {"date": "2026-10-02", "realized_pnl": 5.0},
+        {"date": "2026-10-04", "realized_pnl": 100.0},
+    ])
+    cash = main.pd.DataFrame([
+        {"date": "2026-09-30", "amount": 1000.0},
+        {"date": "2026-10-02", "amount": 50.0},
+        {"date": "2026-10-04", "amount": 400.0},
+    ])
+    captured = {}
+
+    class Chart:
+        def to_html(self, full_html):
+            return "chart"
+
+    def capture_line(frame, **kwargs):
+        captured["values"] = frame["value"].copy()
+        return Chart()
+
+    monkeypatch.setattr(main.px, "line", capture_line)
+
+    assert main.equity_chart(
+        trades, cash, period="CUSTOM",
+        start_date="2026-10-01", end_date="2026-10-03",
+    ) == "chart"
+    assert list(captured["values"]) == [1125.0, 1180.0, 1180.0]
+    assert captured["values"].index[0] == main.pd.Timestamp("2026-10-01")
+    assert captured["values"].index[-1] == main.pd.Timestamp("2026-10-03")
+
+
+def test_equity_chart_maps_dashboard_30_day_period(monkeypatch):
+    today = main.pd.Timestamp.today().normalize()
+    trades = main.pd.DataFrame(columns=["date", "realized_pnl"])
+    cash = main.pd.DataFrame([{"date": today, "amount": 1000.13}])
+    captured = {}
+
+    class Chart:
+        def to_html(self, full_html):
+            return "chart"
+
+    def capture_line(frame, **kwargs):
+        captured["values"] = frame["value"].copy()
+        return Chart()
+
+    monkeypatch.setattr(main.px, "line", capture_line)
+
+    assert main.equity_chart(trades, cash, period="30D") == "chart"
+    assert captured["values"].index[0] == today - main.pd.Timedelta(days=30)
     assert captured["values"].iloc[-1] == 1000.13
 
 

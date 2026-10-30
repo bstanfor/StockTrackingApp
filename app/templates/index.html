@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Portfolio Dashboard</title>
+    <title>{{ dashboard_title }}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
 <style>
@@ -305,7 +305,9 @@ body.dark #activityDrawer .activity-section { border-color: #3b4e5d; background:
 <aside class="sidebar" id="sidebar">
 <h1>Trade Tracker +</h1>
 <nav>
-<button class="side-link active" data-tab="dashboard" onclick="showTab('dashboard')">Dashboard</button>
+<a class="side-link {% if dashboard_mode == 'retirement' %}active{% endif %}" data-dashboard="retirement" href="/?dashboard=retirement&amp;tab=dashboard">Retirement Dashboard</a>
+<a class="side-link {% if dashboard_mode == 'investment' %}active{% endif %}" data-dashboard="investment" href="/?dashboard=investment&amp;tab=dashboard">Investment Dashboard</a>
+<a class="side-link {% if dashboard_mode == 'net-worth' %}active{% endif %}" data-dashboard="net-worth" href="/?dashboard=net-worth&amp;tab=dashboard">Net Worth Dashboard</a>
 <button class="side-link" data-tab="positions" onclick="showTab('positions')">Positions</button>
 <button class="side-link" data-tab="activity" onclick="showTab('activity')">Activity</button>
 <button class="side-link" data-tab="settings" onclick="showTab('settings')">System Settings</button>
@@ -316,10 +318,10 @@ body.dark #activityDrawer .activity-section { border-color: #3b4e5d; background:
 
 <div class="header">
 
-<h1>📊 Portfolio Dashboard</h1>
+<h1>📊 {{ dashboard_title }}</h1>
 
 <div class="tab-bar">
-<div id="btn-dashboard" class="tab-btn" onclick="showTab('dashboard')">📊 Dashboard</div>
+<div id="btn-dashboard" class="tab-btn" onclick="showTab('dashboard')">📊 {{ dashboard_title }}</div>
 <div id="btn-positions" class="tab-btn" onclick="showTab('positions')">📦 Positions</div>
 <div id="btn-activity" class="tab-btn" onclick="showTab('activity')">📄 Activity</div>
 </div>
@@ -330,9 +332,11 @@ body.dark #activityDrawer .activity-section { border-color: #3b4e5d; background:
 <button onclick="toggleDarkMode()">🌙 Dark Mode</button>
 
 <!-- ✅ Filters -->
+{% if dashboard_mode != 'net-worth' %}
 <form method="get" id="accountForm">
+<input type="hidden" name="dashboard" value="{{ dashboard_mode }}">
 <select id="accountSelect" name="account" multiple size="5" aria-label="Select one or more accounts">
-{% for acc in accounts %}
+{% for acc in dashboard_accounts %}
 <option value="{{ acc }}" {% if acc in selected_account %}selected{% endif %}>
 {{ acc }}
 </option>
@@ -346,12 +350,47 @@ body.dark #activityDrawer .activity-section { border-color: #3b4e5d; background:
 </form>
 
 <div id="selectedTags"></div>
+{% endif %}
 
 <hr>
 
 <!-- ✅ DASHBOARD -->
 <div id="dashboardTab" class="tab">
 
+{% if dashboard_mode == 'net-worth' %}
+<h2>Family Net Worth</h2>
+<div class="detail-grid">
+    <div class="detail-stat"><small>Total assets</small>${{ "%.2f"|format(total_assets) }}</div>
+    <div class="detail-stat"><small>Total debts</small>${{ "%.2f"|format(total_debts) }}</div>
+    <div class="detail-stat"><small>Net worth</small><strong>${{ "%.2f"|format(net_worth) }}</strong></div>
+</div>
+<h3>Account balances</h3>
+<div class="table-container">
+<table>
+<thead><tr><th>Account</th><th>Account type</th><th>Current balance</th></tr></thead>
+<tbody>
+{% for row in net_worth_assets %}
+<tr data-net-worth-account="{{ row.name }}"><td>{{ row.name }}</td><td>{{ row.account_type }}</td><td>${{ "%.2f"|format(row.balance) }}</td></tr>
+{% else %}
+<tr><td colspan="3">No asset accounts have been added.</td></tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+<h3>Debts</h3>
+<div class="table-container">
+<table>
+<thead><tr><th>Debt account</th><th>Interest rate</th><th>Current balance</th></tr></thead>
+<tbody>
+{% for account in net_worth_debts %}
+<tr data-net-worth-debt="{{ account.name }}"><td>{{ account.name }}</td><td>{{ "%.2f"|format(account.interest_rate or 0) }}%</td><td>${{ "%.2f"|format(account.current_balance) }}</td></tr>
+{% else %}
+<tr><td colspan="3">No debt accounts have been added.</td></tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+{% else %}
 <h2>Portfolio Value</h2>
 <h1>${{ "%.2f"|format(portfolio_value) }}</h1>
 
@@ -362,6 +401,7 @@ Return: ${{ "%.2f"|format(total_pnl) }}
 
 <form method="get" id="accountPerformanceForm">
 {% for acc in selected_account %}<input type="hidden" name="account" value="{{ acc }}">{% endfor %}
+<input type="hidden" name="dashboard" value="{{ dashboard_mode }}">
 <input type="hidden" name="period" value="{{ selected_period }}">
 <input type="hidden" name="start_date" value="{{ start_date }}">
 <input type="hidden" name="end_date" value="{{ end_date }}">
@@ -445,6 +485,7 @@ Return: ${{ "%.2f"|format(total_pnl) }}
 
 <form method="get" id="periodForm">
 {% for acc in selected_account %}<input type="hidden" name="account" value="{{ acc }}">{% endfor %}
+<input type="hidden" name="dashboard" value="{{ dashboard_mode }}">
 <input type="hidden" name="performance_view" value="{{ performance_view }}">
 <select name="period" onchange="this.form.submit()">
 <option value="30D" {% if selected_period=='30D' %}selected{% endif %}>30 Days</option>
@@ -500,7 +541,7 @@ Portfolio Growth: ${{ analytics.total_pnl }}
 <p class="{% if analytics.true_return_pct >= 0 %}positive{% else %}negative{% endif %}">
 {{ analytics.true_return_pct }}%
 </p>
-
+{% endif %}
 </div>
 
 <!-- ✅ POSITIONS -->
@@ -650,8 +691,120 @@ Portfolio Growth: ${{ analytics.total_pnl }}
     </tr>
 {% endif %}
 </tbody>
+
 </table>
 </div>
+
+<section id="manualAccountsSection">
+<h2>Other accounts and debts</h2>
+<p>Track non-investment balances here. Debt payments reduce the balance by principal; interest is recorded separately.</p>
+{% if activity_message %}<p role="status">{{ activity_message }}</p>{% endif %}
+{% if activity_error %}<p role="alert">{{ activity_error }}</p>{% endif %}
+
+<h3>Add an account</h3>
+<form method="post" action="/add_manual_account">
+<input type="hidden" name="dashboard" value="{{ dashboard_mode }}">
+<label>Account name <input name="account_name" required></label>
+<label>Type
+<select name="account_type" id="manualAccountType" onchange="toggleManualAccountType()" required>
+<option value="ASSET">Asset (cash/bank)</option>
+<option value="DEBT">Debt (loan/credit)</option>
+</select>
+</label>
+<label>Current balance <input type="number" step="0.01" min="0" name="opening_balance" required></label>
+<label id="manualInterestRateField" hidden>Interest rate (% APR)
+<input type="number" step="0.01" min="0" name="interest_rate">
+</label>
+<button type="submit">Add account</button>
+</form>
+
+{% if manual_accounts %}
+<h3>Current balances and rates</h3>
+<div class="table-container">
+<table>
+<thead><tr><th>Account</th><th>Type</th><th>Current balance</th><th>Interest rate</th><th>Save</th></tr></thead>
+<tbody>
+{% for account in manual_accounts %}
+<tr>
+<td>{{ account.name }}</td>
+<td>{{ account.account_type|title }}</td>
+<td>
+<input form="manualAccountForm-{{ account.id }}" type="number" step="0.01" min="0" name="current_balance" value="{{ "%.2f"|format(account.current_balance) }}" required>
+</td>
+<td><input form="manualAccountForm-{{ account.id }}" type="number" step="0.01" min="0" name="interest_rate" value="{{ "%.2f"|format(account.interest_rate) if account.interest_rate is not none else '' }}"></td>
+<td>
+<form id="manualAccountForm-{{ account.id }}" method="post" action="/update_manual_account">
+<input type="hidden" name="dashboard" value="{{ dashboard_mode }}">
+<input type="hidden" name="account_id" value="{{ account.id }}">
+<button type="submit">Save</button>
+</form>
+</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+
+<h3>Record a transaction</h3>
+<form method="post" action="/record_manual_transaction" id="manualTransactionForm">
+<input type="hidden" name="dashboard" value="{{ dashboard_mode }}">
+<label>Account
+<select name="account_id" id="manualTransactionAccount" onchange="updateManualTransactionTypes()" required>
+<option value="">Select account</option>
+{% for account in manual_accounts %}
+<option value="{{ account.id }}" data-type="{{ account.account_type }}">{{ account.name }}</option>
+{% endfor %}
+</select>
+</label>
+<label>Transaction
+<select name="transaction_type" id="manualTransactionType" onchange="toggleManualPaymentFields()" required>
+<option value="">Select transaction</option>
+<option value="DEPOSIT">Deposit</option>
+<option value="WITHDRAWAL">Withdrawal</option>
+<option value="PAYMENT">Debt payment</option>
+</select>
+</label>
+<label>Date <input type="date" name="date" required></label>
+<label>Amount paid / moved <input type="number" step="0.01" min="0" name="amount" required></label>
+<span id="manualPaymentFields" hidden>
+<label>Principal paid <input type="number" step="0.01" min="0" name="principal_amount"></label>
+<label>Interest paid <input type="number" step="0.01" min="0" name="interest_amount"></label>
+<label>Paid from asset account (optional)
+<select name="paid_from_account_id">
+<option value="">Not tracked in an app account</option>
+{% for account in manual_accounts if account.account_type == 'ASSET' %}
+<option value="{{ account.id }}">{{ account.name }}</option>
+{% endfor %}
+</select>
+</label>
+</span>
+<label>Description <input name="description"></label>
+<button type="submit">Record transaction</button>
+</form>
+
+<h3>Other account transaction history</h3>
+<div class="table-container">
+<table>
+<thead><tr><th>Date</th><th>Account</th><th>Type</th><th>Amount</th><th>Principal</th><th>Interest</th><th>Paid from</th><th>Description</th></tr></thead>
+<tbody>
+{% for transaction in manual_account_transactions %}
+<tr>
+<td>{{ transaction.date }}</td><td>{{ transaction.account_name }}</td>
+<td>{{ transaction.transaction_type|replace("_", " ")|title }}</td>
+<td>${{ "%.2f"|format(transaction.amount) }}</td>
+<td>${{ "%.2f"|format(transaction.principal_amount) }}</td>
+<td>${{ "%.2f"|format(transaction.interest_amount) }}</td>
+<td>{{ transaction.paid_from_account_name or "-" }}</td>
+<td>{{ transaction.description }}</td>
+</tr>
+{% else %}
+<tr><td colspan="8">No other-account transactions recorded.</td></tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+{% endif %}
+</section>
 
 </div>
 
@@ -1061,13 +1214,22 @@ Portfolio Growth: ${{ analytics.total_pnl }}
 <button type="button" onclick="toggleDarkMode()">Toggle dark mode</button>
 <button type="button" id="debugToggleButton" onclick="toggleDebugData()">⚙️ Debug data: Off</button>
 <button type="button" onclick="resetWorkspace()">Reset saved view</button>
+{% if settings_message %}<p role="status">{{ settings_message }}</p>{% endif %}
+{% if settings_error %}<p role="alert">{{ settings_error }}</p>{% endif %}
 <h3>Modify Accounts</h3>
+<p>Rename accounts here; associated trades, cash flows, and dividends stay linked.</p>
 <form method="POST" action="/add_account">
 <input name="account_name" placeholder="New account name" required>
 <input name="account_number" placeholder="Account # (optional)">
 <button type="submit">Add account</button>
 </form>
 {% for acc in accounts if acc != 'All' %}
+<form method="POST" action="/rename_account">
+<input type="hidden" name="old_name" value="{{ acc }}">
+<input type="hidden" name="dashboard" value="{{ dashboard_mode }}">
+<label>Account name <input name="new_name" value="{{ acc }}" required></label>
+<button type="submit">Rename</button>
+</form>
 <form method="POST" action="/update_account_number">
 <input type="hidden" name="account_name" value="{{ acc }}">
 <label>{{ acc }} <input name="account_number" value="{{ account_details.get(acc) or '' }}" placeholder="Account # (optional)"></label>
@@ -1078,7 +1240,7 @@ Portfolio Growth: ${{ analytics.total_pnl }}
 </form>
 {% endfor %}
 <h3>Data Management</h3>
-<p>Download all recorded transactions and cash flows.</p>
+<p>Download investment activity, other-account balances, and debt-payment records.</p>
 <div class="dataset-downloads">
 <form method="GET" action="/download_dataset/csv">
 <button type="submit">Download CSV</button>
@@ -1113,9 +1275,47 @@ document.getElementById(t+"Tab").style.display="none";
 document.getElementById(tab+"Tab").style.display="block";
 const tabButton = document.getElementById("btn-"+tab);
 if (tabButton) tabButton.classList.add("active");
-document.querySelectorAll(".side-link").forEach(button => button.classList.toggle("active", button.dataset.tab === tab));
+document.querySelectorAll(".side-link").forEach(button => {
+    const activeDashboard = tab === "dashboard" &&
+        button.dataset.dashboard === "{{ dashboard_mode }}";
+    button.classList.toggle("active", button.dataset.tab === tab || activeDashboard);
+});
 
 localStorage.setItem("tab",tab);
+}
+
+function toggleManualAccountType() {
+    const accountType = document.getElementById("manualAccountType")?.value;
+    const rateField = document.getElementById("manualInterestRateField");
+    const rateInput = rateField?.querySelector("input");
+    const debtAccount = accountType === "DEBT";
+    rateField.hidden = !debtAccount;
+    if (rateInput) rateInput.required = debtAccount;
+}
+
+function updateManualTransactionTypes() {
+    const account = document.getElementById("manualTransactionAccount");
+    const selectedType = account?.selectedOptions[0]?.dataset.type;
+    const typeSelect = document.getElementById("manualTransactionType");
+    if (!typeSelect) return;
+    Array.from(typeSelect.options).forEach(option => {
+        if (!option.value) return;
+        option.hidden = selectedType === "ASSET"
+            ? option.value === "PAYMENT"
+            : selectedType === "DEBT"
+                ? option.value !== "PAYMENT"
+                : false;
+    });
+    typeSelect.value = "";
+    toggleManualPaymentFields();
+}
+
+function toggleManualPaymentFields() {
+    const fields = document.getElementById("manualPaymentFields");
+    const payment = document.getElementById("manualTransactionType")?.value === "PAYMENT";
+    fields.hidden = !payment;
+    fields.querySelectorAll("input[name='principal_amount'], input[name='interest_amount']")
+        .forEach(input => input.required = payment);
 }
 
 function toggleActivityDrawer(open) {
@@ -1482,8 +1682,11 @@ localStorage.setItem("dark",document.body.classList.contains("dark"));
 }
 
 window.onload=()=>{
-    showTab(localStorage.getItem("tab")||"dashboard");
+    const requestedTab = new URLSearchParams(window.location.search).get("tab");
+    showTab(requestedTab || localStorage.getItem("tab") || "dashboard");
     toggleFields();
+    toggleManualAccountType();
+    updateManualTransactionTypes();
 
     document.querySelectorAll("#activityTab > h3, #activityTab > form[action]").forEach(node => {
         document.getElementById("activityDrawer").appendChild(node);

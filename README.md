@@ -4,6 +4,15 @@ StockTrackingApp
 
 This is a simple Flask-based stock transaction tracker using SQLite.
 
+The app provides separate Retirement, Investment, and Net Worth dashboards.
+Retirement accounts are identified by account names containing Fidelity or
+Vanguard; other investment accounts appear on the Investment Dashboard. Add
+non-investment assets and debts from the Activity page. Debt records support
+current balances, interest rates, principal/interest payment tracking, and an
+optional linked payment from a tracked asset account.
+Investment account names can be changed in System Settings; trades, cash flows,
+and dividends remain associated with the renamed account.
+
 Project structure:
 - app/main.py      : Flask application and database logic
 - app/templates/   : Jinja2 templates for index and edit pages

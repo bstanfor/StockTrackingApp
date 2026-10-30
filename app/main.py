@@ -3,6 +3,7 @@ from flask import Flask, render_template, request, redirect, Response
 import json
 import sqlite3
 import re
+import math
 from io import BytesIO
 from urllib.parse import urlencode
 import pandas as pd
@@ -93,6 +94,42 @@ def init_db():
         type TEXT
     )
     """)
+
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS manual_accounts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE,
+        account_type TEXT NOT NULL CHECK(account_type IN ('ASSET', 'DEBT')),
+        current_balance REAL NOT NULL DEFAULT 0,
+        interest_rate REAL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
+
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS manual_account_transactions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        account_id INTEGER NOT NULL REFERENCES manual_accounts(id),
+        paid_from_account_id INTEGER REFERENCES manual_accounts(id),
+        date TEXT NOT NULL,
+        transaction_type TEXT NOT NULL,
+        amount REAL NOT NULL,
+        principal_amount REAL NOT NULL DEFAULT 0,
+        interest_amount REAL NOT NULL DEFAULT 0,
+        description TEXT NOT NULL DEFAULT ''
+    )
+    """)
+    manual_transaction_columns = {
+        row[1] for row in c.execute(
+            "PRAGMA table_info(manual_account_transactions)"
+        ).fetchall()
+    }
+    if "paid_from_account_id" not in manual_transaction_columns:
+        c.execute(
+            "ALTER TABLE manual_account_transactions "
+            "ADD COLUMN paid_from_account_id INTEGER"
+        )
 
     dividend_columns = {
         "account_number": "TEXT",
@@ -847,6 +884,50 @@ def load_account_details():
         row["name"]: row["account_number"]
         for row in rows
     }
+
+
+def load_manual_accounts():
+    conn = get_db_connection()
+    accounts = pd.read_sql(
+        "SELECT * FROM manual_accounts ORDER BY name", conn
+    )
+    conn.close()
+    return accounts.to_dict("records")
+
+
+def load_manual_account_transactions():
+    conn = get_db_connection()
+    transactions = pd.read_sql(
+        """
+        SELECT transactions.*, accounts.name AS account_name, accounts.account_type
+             , payment_account.name AS paid_from_account_name
+        FROM manual_account_transactions AS transactions
+        JOIN manual_accounts AS accounts ON accounts.id = transactions.account_id
+        LEFT JOIN manual_accounts AS payment_account
+            ON payment_account.id = transactions.paid_from_account_id
+        ORDER BY transactions.date DESC, transactions.id DESC
+        """,
+        conn,
+    )
+    conn.close()
+    return transactions.to_dict("records")
+
+
+def is_retirement_account(account_name):
+    normalized = str(account_name or "").casefold()
+    return "fidelity" in normalized or "vanguard" in normalized
+
+
+def parse_required_amount(form, field_name, label):
+    value = str(form.get(field_name, "")).strip()
+    try:
+        amount = float(value)
+    except ValueError as exc:
+        raise ValueError(f"{label} must be a valid number.") from exc
+    if not math.isfinite(amount) or amount < 0:
+        raise ValueError(f"{label} must be zero or greater.")
+    return amount
+
 
 def account_label(account, account_details):
     account_number = account_details.get(account)
@@ -1682,59 +1763,81 @@ def equity_chart(trades, cash, period="1Y", start_date=None, end_date=None):
     if trades.empty and cash.empty:
         return ""
 
-
     df = trades.copy()
     df = df[~df.apply(is_legacy_core_cash_transaction, axis=1)] if not df.empty else df
-    df["date"] = pd.to_datetime(df["date"]).dt.normalize()
-
+    if not df.empty:
+        df["date"] = pd.to_datetime(df["date"], errors="coerce").dt.normalize()
+        df["realized_pnl"] = pd.to_numeric(
+            df["realized_pnl"]
+            if "realized_pnl" in df else pd.Series(0, index=df.index),
+            errors="coerce",
+        ).fillna(0)
+    else:
+        df = pd.DataFrame(columns=["date", "realized_pnl"])
 
     cash_df = cash.copy()
     if not cash_df.empty:
-        cash_df["date"] = pd.to_datetime(cash_df["date"]).dt.normalize()
+        cash_df["date"] = pd.to_datetime(
+            cash_df["date"], errors="coerce"
+        ).dt.normalize()
+        cash_df["amount"] = pd.to_numeric(
+            cash_df["amount"], errors="coerce"
+        ).fillna(0)
+    else:
+        cash_df = pd.DataFrame(columns=["date", "amount"])
 
-    # ✅ Determine date range
     today = pd.Timestamp.today().normalize()
 
     if period == "CUSTOM" and start_date:
         start = pd.to_datetime(start_date, errors="coerce")
         if pd.isna(start):
             start = today - pd.DateOffset(years=1)
+    elif period == "30D":
+        start = today - pd.Timedelta(days=30)
+    elif period == "60D":
+        start = today - pd.Timedelta(days=60)
+    elif period == "90D":
+        start = today - pd.Timedelta(days=90)
+    elif period == "Q":
+        start = today - pd.DateOffset(months=3)
+    elif period == "Y":
+        start = today - pd.DateOffset(years=1)
+    elif period == "YTD":
+        start = pd.Timestamp(year=today.year, month=1, day=1)
     elif period == "1M":
         start = today - pd.DateOffset(months=1)
-    elif period == "YTD":
-        start = pd.Timestamp(year=today.year, month=1, day=1)
     elif period == "3Y":
         start = today - pd.DateOffset(years=3)
-    elif period == "YTD":
-        start = pd.Timestamp(year=today.year, month=1, day=1)
     else:  # default 1Y
         start = today - pd.DateOffset(years=1)
+    start = start.normalize()
 
-    end = pd.to_datetime(end_date, errors="coerce") if end_date else today
-    if pd.isna(end):
-        end = today
-    end = end.normalize() + pd.Timedelta(days=1)
+    selected_end = pd.to_datetime(end_date, errors="coerce") if end_date else today
+    if pd.isna(selected_end):
+        selected_end = today
+    selected_end = selected_end.normalize()
+    end_exclusive = selected_end + pd.Timedelta(days=1)
 
-    df = df[(df["date"] >= start) & (df["date"] < end)]
-    cash_df = cash_df[(cash_df["date"] >= start) & (cash_df["date"] < end)]
+    prior_trade_value = (
+        df.loc[df["date"] < start, "realized_pnl"].sum()
+        if not df.empty else 0
+    )
+    prior_cash_value = (
+        cash_df.loc[cash_df["date"] < start, "amount"].sum()
+        if not cash_df.empty else 0
+    )
+    df = df[(df["date"] >= start) & (df["date"] < end_exclusive)]
+    cash_df = cash_df[(cash_df["date"] >= start) & (cash_df["date"] < end_exclusive)]
 
-    # ✅ Combine into timeline
-    all_dates = pd.date_range(start=start, end=today, freq="D")
+    all_dates = pd.date_range(start=start, end=selected_end, freq="D")
     equity = pd.DataFrame(index=all_dates)
     equity["value"] = 0.0
 
-    # ✅ compute cumulative equity
-    running_value = 0
+    running_value = prior_trade_value + prior_cash_value
 
     for date in all_dates:
-        # trades
-        day_trades = df[df["date"] == date]
-        running_value += day_trades["realized_pnl"].sum()
-
-        # cash
-        day_cash = cash_df[cash_df["date"] == date]
-        running_value += day_cash["amount"].sum() if not cash_df.empty else 0
-
+        running_value += df.loc[df["date"] == date, "realized_pnl"].sum()
+        running_value += cash_df.loc[cash_df["date"] == date, "amount"].sum()
         equity.loc[date, "value"] = running_value
 
     fig = px.line(
@@ -1884,48 +1987,77 @@ def performance_analytics(trades, cash, period="1Y", dividends=None,
 # ---------------------------
 @app.route("/")
 def index():
-
-    # ✅ clear price cache (fresh data per page load)
     price_cache.clear()
 
-    # ✅ get selected accounts (multi-select)
-    selected_accounts = [normalize_account_name(name) for name in request.args.getlist("account")]
-    selected_accounts = [name for name in selected_accounts if name]
+    all_accounts = load_accounts()
+    retirement_accounts = [
+        name for name in all_accounts if is_retirement_account(name)
+    ]
+    investment_accounts = [
+        name for name in all_accounts if not is_retirement_account(name)
+    ]
+    dashboard_mode = str(
+        request.args.get("dashboard", "retirement")
+    ).strip().lower()
+    if dashboard_mode not in {"retirement", "investment", "net-worth"}:
+        dashboard_mode = "retirement"
 
-    # ✅ load accounts from DB (NEW)
-    db_accounts = load_accounts()
+    dashboard_titles = {
+        "retirement": "Retirement Dashboard",
+        "investment": "Investment Dashboard",
+        "net-worth": "Net Worth Dashboard",
+    }
+    dashboard_account_options = {
+        "retirement": retirement_accounts,
+        "investment": investment_accounts,
+        "net-worth": all_accounts,
+    }[dashboard_mode]
+    requested_accounts = [
+        normalize_account_name(name)
+        for name in request.args.getlist("account")
+    ]
+    requested_accounts = [name for name in requested_accounts if name]
+    if dashboard_mode == "net-worth" or not requested_accounts or "All" in requested_accounts:
+        selected_accounts = dashboard_account_options
+    else:
+        selected_accounts = [
+            name for name in requested_accounts
+            if name in dashboard_account_options
+        ]
+
     account_details = load_account_details()
+    manual_accounts = load_manual_accounts()
+    manual_account_transactions = load_manual_account_transactions()
 
-    # ✅ fallback to All
-    if not selected_accounts or "All" in selected_accounts:
-        selected_accounts = db_accounts
+    all_trades, all_cash = load_data()
+    all_dividends = load_dividends()
+    all_trades = enrich_trades(all_trades)
+    activity = build_activity(all_trades, all_cash, all_dividends)
+    account_bal = account_balances(activity)
+    all_account_positions = compute_positions(all_trades, all_cash)
 
-    # ✅ load data First (Critical Fix)
-    trades, cash = load_data()
-    dividends = load_dividends()
-    
-    # ✅ ✅ Filter and EXTRA SAFETY STARTS HERE
+    trades = all_trades
+    cash = all_cash
+    dividends = all_dividends
     if not trades.empty and "account" in trades.columns:
         trades = trades[trades["account"].isin(selected_accounts)]
-
     if not cash.empty and "account" in cash.columns:
         cash = cash[cash["account"].isin(selected_accounts)]
-
     if not dividends.empty and "account" in dividends.columns:
         dividends = dividends[dividends["account"].isin(selected_accounts)]
-    
-    # ✅ analytic
-    trades = enrich_trades(trades)
+
     metrics = compute_metrics(trades, cash)
-    activity = build_activity(trades, cash, dividends)
-    account_bal = account_balances(activity)
     period = request.args.get("period", "YTD").upper()
     if period not in {"30D", "60D", "90D", "Q", "Y", "YTD", "CUSTOM"}:
         period = "YTD"
     start_date = request.args.get("start_date", "")
     end_date = request.args.get("end_date", "")
     chart = equity_chart(trades, cash, period=period, start_date=start_date, end_date=end_date)
-    account_positions = compute_positions(trades, cash)
+    account_positions = {
+        account: positions
+        for account, positions in all_account_positions.items()
+        if account in selected_accounts
+    }
     closed_positions = build_closed_positions(trades)
     performance_view = request.args.get("performance_view", "total").lower()
     if performance_view not in {"total", "trade"}:
@@ -1943,14 +2075,34 @@ def index():
     )
 
 
-    # ✅ allocation chart (with cash)    
     all_positions = []
-
     for acc in account_positions.values():
         all_positions.extend(acc["positions"])
-
     alloc_chart = allocation_chart(all_positions, metrics["total_cash"])
 
+    net_worth_assets = [
+        {
+            "name": account,
+            "balance": all_account_positions.get(account, {}).get("total_value", 0),
+            "account_type": "Investment account",
+        }
+        for account in all_accounts
+    ]
+    net_worth_assets.extend(
+        {
+            "name": account["name"],
+            "balance": account["current_balance"],
+            "account_type": "Asset",
+        }
+        for account in manual_accounts
+        if account["account_type"] == "ASSET"
+    )
+    net_worth_debts = [
+        account for account in manual_accounts
+        if account["account_type"] == "DEBT"
+    ]
+    total_assets = sum(row["balance"] for row in net_worth_assets)
+    total_debts = sum(account["current_balance"] for account in net_worth_debts)
 
     return render_template(
         "index.html",
@@ -1962,10 +2114,20 @@ def index():
         activity=activity,
         account_bal = account_balances(activity),
         allocation_chart=alloc_chart,
-        #  ✅ dropdown list
-        accounts=db_accounts,
-        #  ✅ pass selected accounts
+        accounts=all_accounts,
+        dashboard_accounts=dashboard_account_options,
         selected_account=selected_accounts,
+        dashboard_mode=dashboard_mode,
+        dashboard_title=dashboard_titles[dashboard_mode],
+        manual_accounts=manual_accounts,
+        manual_account_transactions=manual_account_transactions,
+        net_worth_assets=net_worth_assets,
+        net_worth_debts=net_worth_debts,
+        total_assets=total_assets,
+        total_debts=total_debts,
+        net_worth=total_assets - total_debts,
+        activity_message=request.args.get("activity_message", ""),
+        activity_error=request.args.get("activity_error", ""),
         start_date=start_date,
         end_date=end_date,
         account_performance=account_perf,
@@ -1975,6 +2137,8 @@ def index():
         performance_view=performance_view,
         account_details=account_details,
         account_label=account_label,
+        settings_message=request.args.get("settings_message", ""),
+        settings_error=request.args.get("settings_error", ""),
         **metrics
     )
 
@@ -2033,10 +2197,14 @@ def download_dataset(file_format):
 
     trades, cash = load_data()
     dividends = load_dividends()
+    manual_accounts = pd.DataFrame(load_manual_accounts())
+    manual_transactions = pd.DataFrame(load_manual_account_transactions())
     dataset = {
         "transactions": trades.to_dict("records"),
         "cash_flows": cash.to_dict("records"),
-        "dividends": dividends.to_dict("records")
+        "dividends": dividends.to_dict("records"),
+        "manual_accounts": manual_accounts.to_dict("records"),
+        "manual_account_transactions": manual_transactions.to_dict("records"),
     }
 
     if file_format == "json":
@@ -2050,11 +2218,23 @@ def download_dataset(file_format):
     trade_rows = trades.assign(dataset="transactions")
     cash_rows = cash.assign(dataset="cash_flows")
     dividend_rows = dividends.assign(dataset="dividends")
-    columns = sorted(set(trade_rows.columns) | set(cash_rows.columns) | set(dividend_rows.columns))
+    manual_account_rows = manual_accounts.assign(dataset="manual_accounts")
+    manual_transaction_rows = manual_transactions.assign(
+        dataset="manual_account_transactions"
+    )
+    columns = sorted(
+        set(trade_rows.columns)
+        | set(cash_rows.columns)
+        | set(dividend_rows.columns)
+        | set(manual_account_rows.columns)
+        | set(manual_transaction_rows.columns)
+    )
     csv_data = pd.concat([
         trade_rows.reindex(columns=columns),
         cash_rows.reindex(columns=columns),
         dividend_rows.reindex(columns=columns),
+        manual_account_rows.reindex(columns=columns),
+        manual_transaction_rows.reindex(columns=columns),
     ], ignore_index=True)
     return Response(
         csv_data.to_csv(index=False),
@@ -2092,10 +2272,256 @@ def add_account():
         )
         conn.commit()
     except:
-        pass  # avoid duplicate crash
+        pass
 
     conn.close()
     return redirect("/")
+
+
+def redirect_activity_message(message, is_error=False):
+    key = "activity_error" if is_error else "activity_message"
+    return redirect("/?" + urlencode({
+        key: message,
+        "dashboard": request.form.get("dashboard", "retirement"),
+        "tab": "activity",
+    }))
+
+
+@app.route("/add_manual_account", methods=["POST"])
+def add_manual_account():
+    name = str(request.form.get("account_name") or "").strip()
+    account_type = str(request.form.get("account_type") or "").strip().upper()
+    if not name or account_type not in {"ASSET", "DEBT"}:
+        return redirect_activity_message(
+            "Enter an account name and choose Asset or Debt.", True
+        )
+
+    try:
+        opening_balance = parse_required_amount(
+            request.form, "opening_balance", "Opening balance"
+        )
+        interest_rate = (
+            parse_required_amount(request.form, "interest_rate", "Interest rate")
+            if account_type == "DEBT" else None
+        )
+    except ValueError as exc:
+        return redirect_activity_message(str(exc), True)
+
+    conn = get_db_connection()
+    try:
+        duplicate = conn.execute(
+            """
+            SELECT 1 FROM accounts WHERE lower(name)=lower(?)
+            UNION ALL
+            SELECT 1 FROM manual_accounts WHERE lower(name)=lower(?)
+            LIMIT 1
+            """,
+            (name, name),
+        ).fetchone()
+        if duplicate:
+            return redirect_activity_message(
+                "An account with that name already exists.", True
+            )
+
+        conn.execute(
+            """
+            INSERT INTO manual_accounts(name, account_type, current_balance, interest_rate)
+            VALUES (?, ?, ?, ?)
+            """,
+            (name, account_type, opening_balance, interest_rate),
+        )
+        account_id = conn.execute(
+            "SELECT id FROM manual_accounts WHERE name=?", (name,)
+        ).fetchone()["id"]
+        conn.execute(
+            """
+            INSERT INTO manual_account_transactions(
+                account_id, date, transaction_type, amount, principal_amount,
+                interest_amount, description
+            ) VALUES(?, date('now'), 'OPENING_BALANCE', ?, ?, 0, 'Opening balance')
+            """,
+            (account_id, opening_balance, opening_balance),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return redirect_activity_message(f"Added {name}.")
+
+
+@app.route("/update_manual_account", methods=["POST"])
+def update_manual_account():
+    try:
+        account_id = int(request.form.get("account_id", ""))
+        current_balance = parse_required_amount(
+            request.form, "current_balance", "Current balance"
+        )
+        interest_rate_text = str(request.form.get("interest_rate") or "").strip()
+        interest_rate = (
+            parse_required_amount(request.form, "interest_rate", "Interest rate")
+            if interest_rate_text else None
+        )
+    except (ValueError, TypeError) as exc:
+        return redirect_activity_message(str(exc) or "Invalid account details.", True)
+
+    conn = get_db_connection()
+    try:
+        account = conn.execute(
+            "SELECT * FROM manual_accounts WHERE id=?", (account_id,)
+        ).fetchone()
+        if account is None:
+            return redirect_activity_message("Account was not found.", True)
+
+        change = current_balance - account["current_balance"]
+        if account["account_type"] == "DEBT" and interest_rate is None:
+            interest_rate = account["interest_rate"]
+        conn.execute(
+            """
+            UPDATE manual_accounts
+            SET current_balance=?, interest_rate=?, updated_at=CURRENT_TIMESTAMP
+            WHERE id=?
+            """,
+            (current_balance, interest_rate, account_id),
+        )
+        if abs(change) > 0.000001:
+            conn.execute(
+                """
+                INSERT INTO manual_account_transactions(
+                    account_id, date, transaction_type, amount, principal_amount,
+                    interest_amount, description
+                ) VALUES(?, date('now'), 'BALANCE_ADJUSTMENT', ?, ?, 0, 'Manual balance update')
+                """,
+                (account_id, change, change),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+    return redirect_activity_message(f"Updated {account['name']}.")
+
+
+@app.route("/record_manual_transaction", methods=["POST"])
+def record_manual_transaction():
+    try:
+        account_id = int(request.form.get("account_id", ""))
+    except (ValueError, TypeError):
+        return redirect_activity_message("Select a valid account.", True)
+
+    conn = get_db_connection()
+    try:
+        account = conn.execute(
+            "SELECT * FROM manual_accounts WHERE id=?", (account_id,)
+        ).fetchone()
+        if account is None:
+            return redirect_activity_message("Account was not found.", True)
+
+        date = str(request.form.get("date") or "").strip()
+        if not date or pd.isna(pd.to_datetime(date, errors="coerce")):
+            return redirect_activity_message("Enter a valid transaction date.", True)
+
+        description = str(request.form.get("description") or "").strip()
+        transaction_type = str(
+            request.form.get("transaction_type") or ""
+        ).strip().upper()
+        paid_from_id_text = str(
+            request.form.get("paid_from_account_id") or ""
+        ).strip()
+        paid_from_account = None
+        try:
+            amount = parse_required_amount(request.form, "amount", "Amount")
+            if amount <= 0:
+                return redirect_activity_message("Amount must be greater than zero.", True)
+            if transaction_type == "PAYMENT" and account["account_type"] == "DEBT":
+                principal = parse_required_amount(
+                    request.form, "principal_amount", "Principal amount"
+                )
+                interest = parse_required_amount(
+                    request.form, "interest_amount", "Interest amount"
+                )
+                if abs(amount - principal - interest) > 0.01:
+                    return redirect_activity_message(
+                        "Payment amount must equal principal plus interest.", True
+                    )
+                if principal > account["current_balance"]:
+                    return redirect_activity_message(
+                        "Payment principal cannot exceed the current debt balance.", True
+                    )
+                if paid_from_id_text:
+                    paid_from_id = int(paid_from_id_text)
+                    paid_from_account = conn.execute(
+                        "SELECT * FROM manual_accounts WHERE id=?",
+                        (paid_from_id,),
+                    ).fetchone()
+                    if (
+                        paid_from_account is None
+                        or paid_from_account["account_type"] != "ASSET"
+                    ):
+                        return redirect_activity_message(
+                            "Choose an asset account as the payment source.", True
+                        )
+                    if paid_from_account["current_balance"] < amount:
+                        return redirect_activity_message(
+                            "Payment exceeds the selected asset account balance.", True
+                        )
+                new_balance = account["current_balance"] - principal
+            elif transaction_type in {"DEPOSIT", "WITHDRAWAL"} and account["account_type"] == "ASSET":
+                principal = amount if transaction_type == "DEPOSIT" else -amount
+                interest = 0
+                new_balance = account["current_balance"] + principal
+                if new_balance < 0:
+                    return redirect_activity_message(
+                        "Withdrawal cannot exceed the current account balance.", True
+                    )
+            else:
+                return redirect_activity_message(
+                    "Transaction type does not match the selected account.", True
+                )
+        except ValueError as exc:
+            return redirect_activity_message(str(exc), True)
+
+        conn.execute(
+            """
+            INSERT INTO manual_account_transactions(
+                account_id, paid_from_account_id, date, transaction_type, amount,
+                principal_amount, interest_amount, description
+            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                account_id,
+                paid_from_account["id"] if paid_from_account else None,
+                date, transaction_type, amount, principal, interest, description,
+            ),
+        )
+        conn.execute(
+            """
+            UPDATE manual_accounts
+            SET current_balance=?, updated_at=CURRENT_TIMESTAMP WHERE id=?
+            """,
+            (new_balance, account_id),
+        )
+        if paid_from_account:
+            conn.execute(
+                """
+                INSERT INTO manual_account_transactions(
+                    account_id, date, transaction_type, amount, principal_amount,
+                    interest_amount, description
+                ) VALUES(?, ?, 'WITHDRAWAL', ?, ?, 0, ?)
+                """,
+                (
+                    paid_from_account["id"], date, amount, -amount,
+                    f"Debt payment to {account['name']}",
+                ),
+            )
+            conn.execute(
+                """
+                UPDATE manual_accounts
+                SET current_balance=?, updated_at=CURRENT_TIMESTAMP WHERE id=?
+                """,
+                (paid_from_account["current_balance"] - amount, paid_from_account["id"]),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+    return redirect_activity_message("Transaction recorded.")
+
 
 @app.route("/update_account_number", methods=["POST"])
 def update_account_number():
@@ -2110,20 +2536,62 @@ def update_account_number():
 
 @app.route("/rename_account", methods=["POST"])
 def rename_account():
-    old = request.form["old_name"]
-    new = request.form["new_name"]
+    old = str(request.form.get("old_name") or "").strip()
+    new = str(request.form.get("new_name") or "").strip()
+    dashboard = str(request.form.get("dashboard") or "retirement").strip()
+    if not old or not new:
+        message = "Enter an account name."
+        return redirect("/?" + urlencode({
+            "settings_error": message,
+            "dashboard": dashboard,
+            "tab": "settings",
+        }))
 
     conn = get_db_connection()
+    try:
+        account = conn.execute(
+            "SELECT id FROM accounts WHERE name=?", (old,)
+        ).fetchone()
+        if account is None:
+            return redirect("/?" + urlencode({
+                "settings_error": "Account was not found.",
+                "dashboard": dashboard,
+                "tab": "settings",
+            }))
 
-    # ✅ update across tables
-    conn.execute("UPDATE accounts SET name=? WHERE name=?", (new, old))
-    conn.execute("UPDATE transactions SET account=? WHERE account=?", (new, old))
-    conn.execute("UPDATE cash_flows SET account=? WHERE account=?", (new, old))
+        duplicate = conn.execute(
+            """
+            SELECT 1 FROM accounts
+            WHERE lower(name)=lower(?) AND id != ?
+            UNION ALL
+            SELECT 1 FROM manual_accounts WHERE lower(name)=lower(?)
+            LIMIT 1
+            """,
+            (new, account["id"], new),
+        ).fetchone()
+        if duplicate:
+            return redirect("/?" + urlencode({
+                "settings_error": "An account with that name already exists.",
+                "dashboard": dashboard,
+                "tab": "settings",
+            }))
 
-    conn.commit()
-    conn.close()
+        conn.execute("BEGIN")
+        conn.execute("UPDATE accounts SET name=? WHERE id=?", (new, account["id"]))
+        for table in ("transactions", "cash_flows", "dividends"):
+            conn.execute(
+                f"UPDATE {table} SET account=? WHERE account=?",
+                (new, old),
+            )
+        conn.commit()
+    finally:
+        conn.close()
 
-    return redirect("/")
+    return redirect("/?" + urlencode({
+        "settings_message": f"Renamed {old} to {new}.",
+        "dashboard": dashboard,
+        "tab": "settings",
+    }))
 
 @app.route("/add_trade", methods=["POST"])
 def add_trade():
