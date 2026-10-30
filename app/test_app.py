@@ -949,6 +949,42 @@ def test_dashboard_preserves_period_when_account_filter_changes(client):
     assert 'name="dashboard" value="investment"' in html
 
 
+def test_positions_account_dropdown_filters_all_positions_widgets(client):
+    add_account(client, "Brokerage A")
+    add_account(client, "Brokerage B")
+    add_trade(
+        client, account="Brokerage A", symbol="POSITION_A",
+        shares="2", price="50", fees="0",
+    )
+    add_trade(
+        client, account="Brokerage B", symbol="POSITION_B",
+        shares="3", price="50", fees="0",
+    )
+    add_trade(
+        client, account="Brokerage B", symbol="POSITION_B",
+        action="SELL", shares="1", price="60", fees="0",
+    )
+
+    html = client.get(
+        "/?dashboard=investment&positions_account=Brokerage%20A&tab=positions"
+    ).get_data(as_text=True)
+    positions_section = html.split(
+        '<div id="positionsTab"', 1
+    )[1].split('<section id="manualAccountsSection"', 1)[0]
+
+    assert 'id="positionsAccountSelect"' in positions_section
+    assert 'name="positions_account"' in positions_section
+    assert "multiple" not in positions_section.split(
+        'id="positionsAccountSelect"', 1
+    )[1].split(">", 1)[0]
+    assert 'value="Brokerage A" selected' in positions_section
+    assert 'data-position-account="Brokerage A"' in positions_section
+    assert 'data-position-account="Brokerage B"' not in positions_section
+    assert "POSITION_A" in positions_section
+    assert "POSITION_B" not in positions_section
+    assert 'data-closed-position-account="Brokerage B"' not in positions_section
+
+
 def test_dashboards_filter_accounts_and_show_manual_net_worth(client):
     add_account(client, "Fidelity 401K")
     add_account(client, "Personal Brokerage")

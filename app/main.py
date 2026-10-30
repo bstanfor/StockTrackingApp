@@ -2024,6 +2024,19 @@ def index():
             name for name in requested_accounts
             if name in dashboard_account_options
         ]
+    requested_position_account = str(
+        request.args.get("positions_account", "All")
+    ).strip()
+    selected_position_account = (
+        requested_position_account
+        if requested_position_account in dashboard_account_options
+        else "All"
+    )
+    position_accounts = (
+        dashboard_account_options
+        if selected_position_account == "All"
+        else [selected_position_account]
+    )
 
     account_details = load_account_details()
     manual_accounts = load_manual_accounts()
@@ -2056,9 +2069,12 @@ def index():
     account_positions = {
         account: positions
         for account, positions in all_account_positions.items()
-        if account in selected_accounts
+        if account in position_accounts
     }
-    closed_positions = build_closed_positions(trades)
+    closed_positions = [
+        row for row in build_closed_positions(all_trades)
+        if row["account"] in position_accounts
+    ]
     performance_view = request.args.get("performance_view", "total").lower()
     if performance_view not in {"total", "trade"}:
         performance_view = "total"
@@ -2078,7 +2094,10 @@ def index():
     all_positions = []
     for acc in account_positions.values():
         all_positions.extend(acc["positions"])
-    alloc_chart = allocation_chart(all_positions, metrics["total_cash"])
+    positions_total_cash = sum(
+        account["cash"] for account in account_positions.values()
+    )
+    alloc_chart = allocation_chart(all_positions, positions_total_cash)
 
     net_worth_assets = [
         {
@@ -2117,6 +2136,7 @@ def index():
         accounts=all_accounts,
         dashboard_accounts=dashboard_account_options,
         selected_account=selected_accounts,
+        selected_position_account=selected_position_account,
         dashboard_mode=dashboard_mode,
         dashboard_title=dashboard_titles[dashboard_mode],
         manual_accounts=manual_accounts,

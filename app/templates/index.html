@@ -548,6 +548,20 @@ Portfolio Growth: ${{ analytics.total_pnl }}
 <div id="positionsTab" class="tab">
 
 <h2>Positions</h2>
+<form method="get" id="positionsAccountForm">
+<input type="hidden" name="dashboard" value="{{ dashboard_mode }}">
+<input type="hidden" name="tab" value="positions">
+{% for acc in selected_account %}
+<input type="hidden" name="account" value="{{ acc }}">
+{% endfor %}
+<label for="positionsAccountSelect">Account</label>
+<select id="positionsAccountSelect" name="positions_account" onchange="this.form.submit()">
+    <option value="All" {% if selected_position_account == 'All' %}selected{% endif %}>All accounts</option>
+    {% for acc in dashboard_accounts %}
+    <option value="{{ acc }}" {% if selected_position_account == acc %}selected{% endif %}>{{ acc }}</option>
+    {% endfor %}
+</select>
+</form>
 
 <div class="table-container">
 <table>
@@ -570,7 +584,7 @@ Portfolio Growth: ${{ analytics.total_pnl }}
 
 {% for account_name, acct in account_positions.items() %}
 
-<tr class="account-header">
+<tr class="account-header" data-position-account="{{ account_name }}">
     <td colspan="9"><strong>{{ account_name }}</strong></td>
 </tr>
 
@@ -677,7 +691,7 @@ Portfolio Growth: ${{ analytics.total_pnl }}
 <tbody>
 {% if closed_positions %}
     {% for row in closed_positions %}
-    <tr>
+    <tr data-closed-position-account="{{ row.account }}">
         <td>{{ row.account }}</td>
         <td>{{ row.symbol }}</td>
         <td>{{ "%.2f"|format(row.shares_sold) }}</td>
